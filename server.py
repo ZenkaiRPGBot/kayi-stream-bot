@@ -15,7 +15,7 @@ import database as db
 
 mimetypes.init()
 
-# Optional Pyrogram MTProto Client for files > 20 MB
+# Pyrogram MTProto Client for unlimited streaming (handles files up to 2GB/4GB)
 pyrogram_client = None
 
 async def init_pyrogram_client():
@@ -26,20 +26,21 @@ async def init_pyrogram_client():
             clean_api_id = int(str(API_ID).strip())
             clean_api_hash = str(API_HASH).strip()
             pyrogram_client = Client(
-                "kayi_stream_mtproto",
+                "kayi_stream_worker",
                 api_id=clean_api_id,
                 api_hash=clean_api_hash,
                 bot_token=BOT_TOKEN,
+                no_updates=True,
                 in_memory=True
             )
             await pyrogram_client.start()
             me = await pyrogram_client.get_me()
-            print(f"[MTProto] Connected successfully as @{me.username}! (2GB+ streaming enabled)")
+            print(f"[MTProto] Streaming engine connected as @{me.username}! (2GB+ streaming online)")
         except Exception as e:
             print(f"[MTProto] Failed to initialize Pyrogram client: {e}")
             pyrogram_client = None
     else:
-        print("[MTProto] Notice: API_ID or API_HASH not set. Bot API fallback active (max 20 MB).")
+        print("[MTProto] Notice: API_ID or API_HASH not found in .env.")
 
 def format_file_size(size_bytes: int) -> str:
     if size_bytes >= 1024**3:
@@ -70,11 +71,15 @@ async def handle_root(request: web.Request) -> web.Response:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{BRAND_NAME} — Cinema Cloud Stream Engine</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }}
         body {{
-            background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #08080c 70%);
+            background: #06070a;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(129, 140, 248, 0.15) 0px, transparent 50%),
+                radial-gradient(at 50% 100%, rgba(14, 165, 233, 0.08) 0px, transparent 50%);
             color: #f4f4f5;
             min-height: 100vh;
             display: flex;
@@ -83,57 +88,64 @@ async def handle_root(request: web.Request) -> web.Response:
             padding: 24px;
         }}
         .card {{
-            background: rgba(18, 18, 24, 0.75);
+            background: rgba(15, 17, 26, 0.75);
             border: 1px solid rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(20px);
+            backdrop-filter: blur(28px);
             border-radius: 28px;
-            padding: 44px 36px;
-            max-width: 540px;
+            padding: 48px 36px;
+            max-width: 560px;
             width: 100%;
             text-align: center;
-            box-shadow: 0 30px 70px rgba(0,0,0,0.6);
+            box-shadow: 0 35px 80px rgba(0, 0, 0, 0.7);
         }}
-        .logo {{ font-size: 56px; margin-bottom: 12px; filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.4)); }}
-        h1 {{ font-size: 30px; font-weight: 800; background: linear-gradient(135deg, #a5b4fc, #38bdf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
-        p {{ color: #a1a1aa; font-size: 14px; margin-top: 10px; line-height: 1.6; }}
+        .logo {{ font-size: 56px; margin-bottom: 12px; filter: drop-shadow(0 0 24px rgba(56, 189, 248, 0.4)); }}
+        h1 {{
+            font-size: 32px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffffff 30%, #38bdf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }}
+        p {{ color: #94a3b8; font-size: 14px; margin-top: 10px; line-height: 1.6; }}
         .stats-grid {{
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 12px;
-            margin: 28px 0;
+            margin: 30px 0;
         }}
         .stat-box {{
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 16px;
+            border-radius: 18px;
             padding: 16px 8px;
         }}
-        .stat-num {{ font-size: 20px; font-weight: 800; color: #38bdf8; }}
-        .stat-lbl {{ font-size: 11px; color: #71717a; text-transform: uppercase; margin-top: 4px; font-weight: 600; }}
+        .stat-num {{ font-size: 22px; font-weight: 800; color: #38bdf8; font-family: 'JetBrains Mono', monospace; }}
+        .stat-lbl {{ font-size: 11px; color: #64748b; text-transform: uppercase; margin-top: 4px; font-weight: 700; letter-spacing: 0.5px; }}
         .btn {{
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            gap: 10px;
             width: 100%;
             background: linear-gradient(135deg, #0284c7, #2563eb);
             color: #fff;
-            padding: 15px;
-            border-radius: 14px;
+            padding: 16px;
+            border-radius: 16px;
             text-decoration: none;
             font-weight: 700;
             font-size: 15px;
-            box-shadow: 0 10px 25px rgba(37, 99, 235, 0.35);
-            transition: all 0.2s ease;
+            box-shadow: 0 12px 30px rgba(37, 99, 235, 0.35);
+            transition: all 0.25s ease;
         }}
-        .btn:hover {{ transform: translateY(-2px); box-shadow: 0 14px 30px rgba(37, 99, 235, 0.5); }}
+        .btn:hover {{ transform: translateY(-2px); box-shadow: 0 16px 36px rgba(37, 99, 235, 0.5); }}
     </style>
 </head>
 <body>
     <div class="card">
         <div class="logo">🦅</div>
         <h1>{BRAND_NAME}</h1>
-        <p>Ultra-Fast Telegram File to Direct Link & Video Streaming Engine. Instant zero-RAM streaming, full HTTP Range seeking, and cinema-grade playback.</p>
+        <p>Enterprise Cloud Streaming Engine. Direct MTProto multi-threaded pipelining with zero disk footprint and cinema web playback.</p>
         
         <div class="stats-grid">
             <div class="stat-box">
@@ -150,7 +162,7 @@ async def handle_root(request: web.Request) -> web.Response:
             </div>
         </div>
 
-        <a href="https://t.me/{CHANNEL_USERNAME.lstrip('@')}" class="btn">🚀 Join Telegram Ecosystem</a>
+        <a href="https://t.me/{CHANNEL_USERNAME.lstrip('@')}" class="btn">Launch Telegram Bot</a>
     </div>
 </body>
 </html>"""
@@ -171,7 +183,7 @@ async def handle_watch(request: web.Request) -> web.Response:
     record = await db.get_file_record(token)
     if not record:
         return web.Response(
-            text="""<!DOCTYPE html><html><body style="background:#08080c;color:#f4f4f5;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+            text="""<!DOCTYPE html><html><body style="background:#06070a;color:#f4f4f5;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
             <div style="text-align:center;padding:24px;"><h1>404 - Link Expired or Not Found</h1><p style="color:#71717a;margin-top:8px;">This link has expired or has been revoked by the owner.</p></div></body></html>""",
             content_type="text/html",
             status=404
@@ -200,11 +212,13 @@ async def handle_watch(request: web.Request) -> web.Response:
     mkv_banner = ""
     if is_mkv:
         mkv_banner = f"""
-        <div class="codec-banner">
-            <div class="banner-icon">💡</div>
-            <div class="banner-text">
-                <b>MKV / Anime Video Notice:</b> Web browsers might not support all audio tracks (AC3/E-AC3/DTS) in MKV files natively.
-                For stutter-free playback with multi-subtitles, tap <b>Open in VLC Player</b> or <b>MX Player</b> below!
+        <div class="codec-alert">
+            <div class="alert-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            </div>
+            <div class="alert-content">
+                <div class="alert-title">MKV / Multi-Track Audio Notice</div>
+                <div class="alert-desc">Web browsers may not support AC3, DTS, or 10-bit anime subtitles natively. For stutter-free hardware decoding, launch directly in <b>VLC</b>, <b>MX Player</b>, or <b>PotPlayer</b> below.</div>
             </div>
         </div>
         """
@@ -212,10 +226,11 @@ async def handle_watch(request: web.Request) -> web.Response:
     # Dynamic player block
     if category == "video":
         player_html = f"""
-        <div class="player-container">
-            <div class="ambient-glow" id="ambientGlow"></div>
-            <div class="player-wrapper">
-                <video id="player" playsinline controls preload="metadata">
+        <div class="cinema-stage" id="cinemaStage">
+            <div class="ambilight-glow" id="ambilightGlow"></div>
+            <canvas id="ambientCanvas" style="display:none;"></canvas>
+            <div class="player-box">
+                <video id="player" playsinline controls preload="metadata" crossorigin="anonymous">
                     <source src="{stream_url}" type="{mime_type}">
                     Your browser does not support HTML5 video streaming.
                 </video>
@@ -223,26 +238,33 @@ async def handle_watch(request: web.Request) -> web.Response:
         </div>"""
     elif category == "audio":
         player_html = f"""
-        <div class="audio-box">
-            <div class="disc-glow"></div>
-            <div class="disc-icon">🎵</div>
-            <div class="audio-title">{file_name}</div>
-            <div class="audio-sub">Lossless Telegram Cloud Stream • {file_size_fmt}</div>
-            <audio id="player" controls style="width: 100%; margin-top: 24px;">
-                <source src="{stream_url}" type="{mime_type}">
-            </audio>
+        <div class="audio-stage">
+            <div class="vinyl-record" id="vinylRecord">
+                <div class="vinyl-core"></div>
+            </div>
+            <div class="audio-meta">
+                <div class="audio-title">{file_name}</div>
+                <div class="audio-subtitle">Lossless Audio Stream • {file_size_fmt}</div>
+            </div>
+            <div class="audio-player-wrapper">
+                <audio id="player" controls style="width: 100%;">
+                    <source src="{stream_url}" type="{mime_type}">
+                </audio>
+            </div>
         </div>"""
     elif category == "image":
         player_html = f"""
-        <div class="image-box">
-            <img src="{stream_url}" alt="{file_name}">
+        <div class="image-stage">
+            <img src="{stream_url}" alt="{file_name}" id="imageViewer">
         </div>"""
     else:
         player_html = f"""
-        <div class="doc-box">
-            <div class="doc-icon">📄</div>
-            <div class="doc-title">{file_name}</div>
-            <div class="doc-size">{file_size_fmt} • Document</div>
+        <div class="doc-stage">
+            <div class="doc-badge">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            </div>
+            <div class="doc-name">{file_name}</div>
+            <div class="doc-size">{file_size_fmt} • Document File</div>
         </div>"""
 
     html = f"""<!DOCTYPE html>
@@ -252,193 +274,248 @@ async def handle_watch(request: web.Request) -> web.Response:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{file_name} — {BRAND_NAME}</title>
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {{
-            --plyr-color-main: #0284c7;
+            --plyr-color-main: #0ea5e9;
             --plyr-video-background: #000000;
-            --bg-dark: #07070a;
-            --card-bg: rgba(18, 18, 24, 0.7);
-            --border-glow: rgba(56, 189, 248, 0.2);
+            --bg-canvas: #06070a;
+            --surface-panel: rgba(14, 16, 24, 0.78);
+            --surface-card: rgba(255, 255, 255, 0.03);
+            --border-subtle: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --cyan-accent: #38bdf8;
+            --blue-accent: #2563eb;
         }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }}
         body {{
-            background: radial-gradient(circle at 50% 0%, #151528 0%, #07070a 75%);
-            color: #f4f4f5;
+            background: var(--bg-canvas);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.12) 0px, transparent 40%),
+                radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 40%),
+                radial-gradient(at 50% 100%, rgba(2, 132, 199, 0.08) 0px, transparent 50%);
+            color: var(--text-primary);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 24px 16px 50px;
+            padding: 20px 16px 60px;
             overflow-x: hidden;
+            transition: background 0.5s ease;
         }}
-        .top-nav {{
+
+        /* Top Bar */
+        .top-navbar {{
             width: 100%;
-            max-width: 1040px;
+            max-width: 1140px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 24px;
+            margin-bottom: 20px;
+            padding: 0 4px;
         }}
-        .brand {{
-            font-size: 20px;
+        .brand-link {{
+            font-size: 21px;
             font-weight: 800;
-            color: #fff;
+            color: #ffffff;
             display: flex;
             align-items: center;
             gap: 10px;
             text-decoration: none;
-            letter-spacing: -0.3px;
+            letter-spacing: -0.4px;
         }}
-        .brand span {{
-            background: linear-gradient(135deg, #38bdf8, #818cf8);
+        .brand-link span {{
+            background: linear-gradient(135deg, #ffffff 40%, var(--cyan-accent) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }}
-        .live-status {{
+        .nav-actions {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .pipeline-pill {{
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            background: rgba(34, 197, 94, 0.1);
-            border: 1px solid rgba(34, 197, 94, 0.25);
-            padding: 6px 14px;
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.22);
+            padding: 7px 14px;
             border-radius: 999px;
             font-size: 11px;
             font-weight: 700;
             color: #4ade80;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.6px;
         }}
-        .pulse-dot {{
+        .pulse-light {{
             width: 7px;
             height: 7px;
             background: #22c55e;
             border-radius: 50%;
             box-shadow: 0 0 10px #22c55e;
-            animation: pulse 2s infinite;
+            animation: pulse-ring 2s infinite;
         }}
-        @keyframes pulse {{
-            0% {{ transform: scale(0.95); opacity: 0.8; }}
-            50% {{ transform: scale(1.4); opacity: 1; }}
-            100% {{ transform: scale(0.95); opacity: 0.8; }}
+        @keyframes pulse-ring {{
+            0% {{ transform: scale(0.9); opacity: 0.8; }}
+            50% {{ transform: scale(1.35); opacity: 1; }}
+            100% {{ transform: scale(0.9); opacity: 0.8; }}
         }}
+        .theater-btn {{
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            padding: 7px 14px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }}
+        .theater-btn:hover {{ background: rgba(255, 255, 255, 0.12); }}
 
-        .main-card {{
+        /* Main Container */
+        .viewport-container {{
             width: 100%;
-            max-width: 1040px;
-            background: var(--card-bg);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(24px);
+            max-width: 1140px;
+            background: var(--surface-panel);
+            border: 1px solid var(--border-subtle);
+            backdrop-filter: blur(28px);
             border-radius: 28px;
             overflow: hidden;
-            box-shadow: 0 35px 80px rgba(0, 0, 0, 0.7);
-            position: relative;
+            box-shadow: 0 35px 90px rgba(0, 0, 0, 0.75);
+            transition: max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }}
+        .viewport-container.theater-active {{
+            max-width: 98vw;
         }}
 
-        /* Cinema Player & Ambient Glow */
-        .player-container {{
+        /* Cinema Player & Ambilight Glow */
+        .cinema-stage {{
             position: relative;
             width: 100%;
-            background: #000;
+            background: #000000;
+            overflow: hidden;
         }}
-        .ambient-glow {{
+        .ambilight-glow {{
             position: absolute;
-            top: 10%;
+            top: 5%;
             left: 5%;
             width: 90%;
-            height: 80%;
-            background: radial-gradient(circle, rgba(56, 189, 248, 0.25) 0%, rgba(99, 102, 241, 0.15) 50%, transparent 80%);
-            filter: blur(60px);
+            height: 90%;
+            background: radial-gradient(circle, rgba(56, 189, 248, 0.3) 0%, rgba(99, 102, 241, 0.18) 50%, transparent 80%);
+            filter: blur(70px);
             z-index: 0;
             pointer-events: none;
-            opacity: 0.7;
-            transition: opacity 0.5s ease;
+            opacity: 0.8;
+            transition: background 0.8s ease, opacity 0.5s ease;
         }}
-        .player-wrapper {{
+        .player-box {{
             position: relative;
             z-index: 1;
             width: 100%;
-            background: #000;
+            background: #000000;
         }}
         .plyr {{
             border-radius: 0;
-            max-height: 78vh;
+            max-height: 80vh;
         }}
 
-        /* Codec Warning Banner */
-        .codec-banner {{
+        /* Codec Alert */
+        .codec-alert {{
             display: flex;
             align-items: flex-start;
-            gap: 12px;
-            background: rgba(234, 179, 8, 0.1);
-            border: 1px solid rgba(234, 179, 8, 0.25);
-            border-radius: 16px;
-            padding: 14px 18px;
-            margin: 20px 24px 0;
+            gap: 14px;
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.22);
+            border-radius: 18px;
+            padding: 16px 20px;
+            margin: 22px 28px 0;
             color: #fef08a;
-            font-size: 13px;
-            line-height: 1.5;
         }}
-        .banner-icon {{ font-size: 20px; }}
-        .codec-banner b {{ color: #fde047; }}
+        .alert-icon {{
+            color: #f59e0b;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }}
+        .alert-title {{
+            font-size: 13.5px;
+            font-weight: 700;
+            color: #fbbf24;
+            margin-bottom: 4px;
+        }}
+        .alert-desc {{
+            font-size: 12.5px;
+            line-height: 1.55;
+            color: #fef3c7;
+        }}
 
-        /* Content Body */
-        .content-body {{
-            padding: 28px 32px 36px;
+        /* Panel Body */
+        .panel-body {{
+            padding: 30px 32px 38px;
         }}
-        .file-header {{
+
+        /* File Title Header */
+        .title-header {{
             display: flex;
-            justify-content: space-between;
             align-items: flex-start;
+            justify-content: space-between;
             gap: 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            padding-bottom: 22px;
-            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-subtle);
+            padding-bottom: 24px;
+            margin-bottom: 26px;
         }}
-        .file-title {{
-            font-size: 20px;
+        .filename-text {{
+            font-size: 21px;
             font-weight: 800;
+            color: var(--text-primary);
             line-height: 1.4;
-            color: #ffffff;
             word-break: break-all;
+            letter-spacing: -0.3px;
         }}
-        .meta-badges {{
+        .pills-row {{
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
-            margin-top: 12px;
+            margin-top: 14px;
         }}
-        .badge {{
+        .tag-pill {{
             display: inline-flex;
             align-items: center;
             gap: 6px;
             font-size: 12px;
             font-weight: 600;
-            color: #94a3b8;
+            color: var(--text-secondary);
             background: rgba(255, 255, 255, 0.04);
             border: 1px solid rgba(255, 255, 255, 0.08);
-            padding: 5px 12px;
+            padding: 6px 12px;
             border-radius: 10px;
         }}
-        .badge-highlight {{
-            color: #38bdf8;
+        .tag-highlight {{
+            color: var(--cyan-accent);
             background: rgba(56, 189, 248, 0.08);
-            border-color: rgba(56, 189, 248, 0.2);
+            border-color: rgba(56, 189, 248, 0.22);
+            font-weight: 700;
         }}
 
-        /* Action Launchers Grid */
-        .action-grid {{
+        /* Actions Dock */
+        .actions-dock {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
             gap: 14px;
-            margin-top: 24px;
+            margin-bottom: 28px;
         }}
-        .btn-action {{
+        .dock-btn {{
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 10px;
-            padding: 15px 20px;
+            padding: 16px 20px;
             border-radius: 16px;
             font-size: 14px;
             font-weight: 700;
@@ -447,125 +524,140 @@ async def handle_watch(request: web.Request) -> web.Response:
             border: 1px solid transparent;
             transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }}
-        .btn-download {{
+        .btn-direct-download {{
             grid-column: 1 / -1;
-            background: linear-gradient(135deg, #0284c7, #2563eb);
+            background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
             color: #ffffff;
             font-size: 16px;
             padding: 18px;
             border: none;
-            box-shadow: 0 12px 28px rgba(37, 99, 235, 0.35);
+            box-shadow: 0 14px 32px rgba(37, 99, 235, 0.35);
         }}
-        .btn-download:hover {{
+        .btn-direct-download:hover {{
             transform: translateY(-2px);
-            box-shadow: 0 16px 36px rgba(37, 99, 235, 0.5);
+            box-shadow: 0 18px 40px rgba(37, 99, 235, 0.5);
         }}
-        .btn-vlc {{
+        .btn-player-vlc {{
             background: rgba(249, 115, 22, 0.12);
             color: #fb923c;
-            border-color: rgba(249, 115, 22, 0.25);
+            border-color: rgba(249, 115, 22, 0.28);
         }}
-        .btn-vlc:hover {{
+        .btn-player-vlc:hover {{
             background: rgba(249, 115, 22, 0.22);
             transform: translateY(-2px);
         }}
-        .btn-mx {{
+        .btn-player-mx {{
             background: rgba(14, 165, 233, 0.12);
             color: #38bdf8;
-            border-color: rgba(14, 165, 233, 0.25);
+            border-color: rgba(14, 165, 233, 0.28);
         }}
-        .btn-mx:hover {{
+        .btn-player-mx:hover {{
             background: rgba(14, 165, 233, 0.22);
             transform: translateY(-2px);
         }}
-        .btn-potplayer {{
+        .btn-player-pot {{
             background: rgba(234, 179, 8, 0.12);
             color: #facc15;
-            border-color: rgba(234, 179, 8, 0.25);
+            border-color: rgba(234, 179, 8, 0.28);
         }}
-        .btn-potplayer:hover {{
+        .btn-player-pot:hover {{
             background: rgba(234, 179, 8, 0.22);
             transform: translateY(-2px);
         }}
-        .btn-copy {{
-            background: rgba(255, 255, 255, 0.05);
-            color: #f4f4f5;
-            border-color: rgba(255, 255, 255, 0.12);
+
+        /* URL Copy Bar */
+        .copy-bar {{
+            display: flex;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            padding: 6px 6px 6px 16px;
+            margin-bottom: 28px;
+            gap: 12px;
         }}
-        .btn-copy:hover {{
-            background: rgba(255, 255, 255, 0.1);
-            transform: translateY(-2px);
+        .copy-input {{
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--cyan-accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+        .copy-action-btn {{
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 13px;
+            padding: 10px 18px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }}
+        .copy-action-btn:hover {{
+            background: rgba(255, 255, 255, 0.16);
         }}
 
-        /* Audio / Doc Box */
-        .audio-box, .doc-box, .image-box {{
-            padding: 56px 24px;
-            text-align: center;
+        /* Bento Grid */
+        .bento-grid {{
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            margin-bottom: 24px;
+        }}
+        .bento-card {{
+            background: var(--surface-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 18px;
+            padding: 20px;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            justify-content: space-between;
         }}
-        .disc-icon, .doc-icon {{
-            font-size: 68px;
-            margin-bottom: 16px;
-            filter: drop-shadow(0 0 24px rgba(56, 189, 248, 0.3));
-        }}
-        .audio-title, .doc-title {{
-            font-size: 22px;
-            font-weight: 800;
-            color: #fff;
-            max-width: 640px;
-            word-break: break-all;
-        }}
-        .audio-sub, .doc-size {{
-            font-size: 14px;
-            color: #71717a;
-            margin-top: 8px;
-        }}
-        .image-box img {{
-            max-width: 100%;
-            max-height: 75vh;
-            border-radius: 16px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-        }}
-
-        /* Toast */
-        .toast {{
-            position: fixed;
-            bottom: 30px;
-            background: #18181b;
-            color: #fff;
-            padding: 14px 28px;
-            border-radius: 999px;
-            font-size: 14px;
+        .bento-label {{
+            font-size: 11px;
             font-weight: 700;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            box-shadow: 0 15px 40px rgba(0,0,0,0.6);
-            opacity: 0;
-            transform: translateY(20px);
-            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-            pointer-events: none;
-            z-index: 100;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 8px;
         }}
-        .toast.show {{ opacity: 1; transform: translateY(0); }}
+        .bento-value {{
+            font-size: 16px;
+            font-weight: 700;
+            color: #ffffff;
+        }}
+        .bento-sub {{
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }}
 
-        /* Keyboard Cheatsheet */
-        .cheatsheet {{
+        /* Keyboard Controls HUD */
+        .hud-footer {{
             display: flex;
             justify-content: center;
             flex-wrap: wrap;
             gap: 16px;
-            margin-top: 24px;
             padding-top: 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            border-top: 1px solid var(--border-subtle);
             font-size: 12px;
-            color: #71717a;
+            color: var(--text-muted);
         }}
-        .key {{
+        .hud-key {{
             display: inline-block;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: 6px;
             padding: 2px 7px;
             color: #cbd5e1;
@@ -573,86 +665,273 @@ async def handle_watch(request: web.Request) -> web.Response:
             font-weight: 600;
             font-size: 11px;
         }}
+
+        /* Audio / Vinyl */
+        .audio-stage {{
+            padding: 60px 24px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }}
+        .vinyl-record {{
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #1e293b 0%, #0f172a 40%, #020617 100%);
+            border: 3px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 0 40px rgba(56, 189, 248, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            animation: spin 10s linear infinite paused;
+        }}
+        .vinyl-record.playing {{ animation-play-state: running; }}
+        @keyframes spin {{ 100% {{ transform: rotate(360deg); }} }}
+        .vinyl-core {{
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: #0ea5e9;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }}
+        .audio-title {{
+            font-size: 22px;
+            font-weight: 800;
+            color: #ffffff;
+            max-width: 640px;
+            word-break: break-all;
+        }}
+        .audio-subtitle {{
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }}
+        .audio-player-wrapper {{
+            width: 100%;
+            max-width: 600px;
+            margin-top: 28px;
+        }}
+
+        /* Image Stage */
+        .image-stage {{
+            padding: 30px;
+            text-align: center;
+        }}
+        .image-stage img {{
+            max-width: 100%;
+            max-height: 75vh;
+            border-radius: 18px;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+        }}
+
+        /* Doc Stage */
+        .doc-stage {{
+            padding: 60px 24px;
+            text-align: center;
+        }}
+        .doc-badge {{
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: rgba(56, 189, 248, 0.08);
+            border: 1px solid rgba(56, 189, 248, 0.25);
+            border-radius: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        .doc-name {{
+            font-size: 22px;
+            font-weight: 800;
+            color: #fff;
+            max-width: 640px;
+            margin: 0 auto;
+            word-break: break-all;
+        }}
+        .doc-size {{
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }}
+
+        /* Floating Toast */
+        .floating-toast {{
+            position: fixed;
+            bottom: 30px;
+            background: rgba(24, 24, 32, 0.95);
+            color: #ffffff;
+            padding: 14px 28px;
+            border-radius: 999px;
+            font-size: 14px;
+            font-weight: 700;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(16px);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        .floating-toast.show {{
+            opacity: 1;
+            transform: translateY(0);
+        }}
+
+        @media (max-width: 768px) {{
+            .panel-body {{ padding: 22px 18px 28px; }}
+            .bento-grid {{ grid-template-columns: 1fr; }}
+            .filename-text {{ font-size: 18px; }}
+            .top-navbar {{ flex-wrap: wrap; gap: 12px; }}
+        }}
     </style>
 </head>
 <body>
-    <div class="top-nav">
-        <a href="/" class="brand">🦅 <span>{BRAND_NAME}</span></a>
-        <div class="live-status">
-            <span class="pulse-dot"></span>
-            Cloud Stream Active
+    <div class="top-navbar">
+        <a href="/" class="brand-link">🦅 <span>{BRAND_NAME}</span></a>
+        <div class="nav-actions">
+            <button class="theater-btn" onclick="toggleTheater()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                Theater Mode
+            </button>
+            <div class="pipeline-pill">
+                <span class="pulse-light"></span>
+                MTProto Pipeline Active
+            </div>
         </div>
     </div>
 
-    <div class="main-card">
+    <div class="viewport-container" id="mainContainer">
         {player_html}
         {mkv_banner}
 
-        <div class="content-body">
-            <div class="file-header">
+        <div class="panel-body">
+            <div class="title-header">
                 <div>
-                    <h1 class="file-title">{file_name}</h1>
-                    <div class="meta-badges">
-                        <span class="badge badge-highlight">📦 {file_size_fmt}</span>
-                        <span class="badge">🎬 {category.upper()}</span>
-                        <span class="badge">⚡ Zero-RAM Buffer</span>
-                        <span class="badge">🛡️ Direct Cloud Stream</span>
-                        <span class="badge">⏳ Valid 24h</span>
+                    <h1 class="filename-text">{file_name}</h1>
+                    <div class="pills-row">
+                        <span class="tag-pill tag-highlight">{file_size_fmt}</span>
+                        <span class="tag-pill">{category.upper()}</span>
+                        <span class="tag-pill">MTProto 1MB Chunks</span>
+                        <span class="tag-pill">Zero-RAM Buffer</span>
+                        <span class="tag-pill">Valid 24h</span>
                     </div>
                 </div>
             </div>
 
-            <div class="action-grid">
-                <a href="{dl_url}" class="btn-action btn-download" download>
-                    ⚡ Instant High-Speed Download
+            <div class="actions-dock">
+                <a href="{dl_url}" class="dock-btn btn-direct-download" download>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Direct High-Speed Download
                 </a>
-                <a href="{vlc_url}" class="btn-action btn-vlc">
-                    🟧 Open in VLC Player
+                <a href="{vlc_url}" class="dock-btn btn-player-vlc">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L6 19H18L12 2ZM12 6.5L14.7 15H9.3L12 6.5Z"/></svg>
+                    Open in VLC Player
                 </a>
-                <a href="{mx_url}" class="btn-action btn-mx">
-                    🔷 Open in MX Player
+                <a href="{mx_url}" class="dock-btn btn-player-mx">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    Open in MX Player
                 </a>
-                <a href="{potplayer_url}" class="btn-action btn-potplayer">
-                    🟨 Open in PotPlayer
+                <a href="{potplayer_url}" class="dock-btn btn-player-pot">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
+                    Open in PotPlayer
                 </a>
-                <button class="btn-action btn-copy" onclick="copyStreamLink()">
-                    📋 Copy Direct Stream Link
+            </div>
+
+            <div class="copy-bar">
+                <input type="text" class="copy-input" id="streamUrlInput" value="{stream_url}" readonly>
+                <button class="copy-action-btn" onclick="copyStreamUrl()">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    Copy Stream Link
                 </button>
             </div>
 
-            <div class="cheatsheet">
-                <span><span class="key">Space</span> Play/Pause</span>
-                <span><span class="key">F</span> Fullscreen</span>
-                <span><span class="key">M</span> Mute</span>
-                <span><span class="key">← / →</span> 10s Seek</span>
-                <span><span class="key">↑ / ↓</span> Volume</span>
+            <div class="bento-grid">
+                <div class="bento-card">
+                    <div class="bento-label">File Profile</div>
+                    <div class="bento-value">{category.capitalize()} Container</div>
+                    <div class="bento-sub">{mime_type}</div>
+                </div>
+                <div class="bento-card">
+                    <div class="bento-label">Streaming Protocol</div>
+                    <div class="bento-value">MTProto 2GB+ Pipeline</div>
+                    <div class="bento-sub">RFC 7233 Byte Seeking</div>
+                </div>
+                <div class="bento-card">
+                    <div class="bento-label">Data Volume</div>
+                    <div class="bento-value">{file_size_fmt}</div>
+                    <div class="bento-sub">{file_size:,} bytes</div>
+                </div>
+            </div>
+
+            <div class="hud-footer">
+                <span><span class="hud-key">Space</span> Play/Pause</span>
+                <span><span class="hud-key">F</span> Fullscreen</span>
+                <span><span class="hud-key">T</span> Theater Mode</span>
+                <span><span class="hud-key">M</span> Mute</span>
+                <span><span class="hud-key">← / →</span> 10s Seek</span>
+                <span><span class="hud-key">↑ / ↓</span> Volume</span>
             </div>
         </div>
     </div>
 
-    <div id="toast" class="toast">Direct stream link copied to clipboard! ✅</div>
+    <div id="toast" class="floating-toast">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        Direct stream link copied to clipboard!
+    </div>
 
     <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {{
-            const el = document.getElementById('player');
-            if (el) {{
-                const player = new Plyr(el, {{
+            const videoEl = document.getElementById('player');
+            const vinyl = document.getElementById('vinylRecord');
+
+            if (videoEl) {{
+                const player = new Plyr(videoEl, {{
                     controls: ['play-large', 'play', 'progress', 'current-time', 'duration', 'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'fullscreen'],
                     speed: {{ selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] }},
                     keyboard: {{ focused: true, global: true }},
                     seekTime: 10
                 }});
+
+                if (vinyl) {{
+                    videoEl.addEventListener('play', () => vinyl.classList.add('playing'));
+                    videoEl.addEventListener('pause', () => vinyl.classList.remove('playing'));
+                }}
+
+                // Keyboard 'T' for theater mode
+                document.addEventListener('keydown', (e) => {{
+                    if (e.key === 't' || e.key === 'T') {{
+                        if (document.activeElement.tagName !== 'INPUT') {{
+                            toggleTheater();
+                        }}
+                    }}
+                }});
             }}
         }});
 
-        function copyStreamLink() {{
-            const url = "{stream_url}";
-            navigator.clipboard.writeText(url).then(() => {{
-                const toast = document.getElementById('toast');
-                toast.classList.add('show');
-                setTimeout(() => toast.classList.remove('show'), 2500);
-            }});
+        function toggleTheater() {{
+            const c = document.getElementById('mainContainer');
+            if (c) {{
+                c.classList.toggle('theater-active');
+            }}
+        }}
+
+        function copyStreamUrl() {{
+            const input = document.getElementById('streamUrlInput');
+            if (input) {{
+                navigator.clipboard.writeText(input.value).then(() => {{
+                    const toast = document.getElementById('toast');
+                    toast.classList.add('show');
+                    setTimeout(() => toast.classList.remove('show'), 2500);
+                }});
+            }}
         }}
     </script>
 </body>
@@ -734,7 +1013,6 @@ async def handle_download(request: web.Request) -> web.StreamResponse:
 
         except Exception as e:
             print(f"[MTProto Stream Error] {e}")
-            # Fall through to fallback
 
     # 2. Standard Bot API Fallback (for files <= 20 MB)
     if file_size <= 20 * 1024 * 1024:
@@ -783,87 +1061,7 @@ async def handle_download(request: web.Request) -> web.StreamResponse:
                 asyncio.create_task(db.increment_download_count(token))
                 return response
 
-    # 3. File > 20 MB and MTProto credentials not yet configured
-    # Instead of throwing a raw 502 that crashes Cloudflare with "Bad Gateway Host Error",
-    # render a polished, actionable guide page.
-    error_html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stream Setup Required — {BRAND_NAME}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }}
-        body {{
-            background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #07070a 75%);
-            color: #f4f4f5;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
-        }}
-        .card {{
-            background: rgba(18, 18, 24, 0.85);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(24px);
-            border-radius: 28px;
-            padding: 40px;
-            max-width: 600px;
-            width: 100%;
-            box-shadow: 0 30px 80px rgba(0,0,0,0.7);
-        }}
-        .icon {{ font-size: 48px; margin-bottom: 16px; text-align: center; }}
-        h1 {{ font-size: 24px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 8px; }}
-        p {{ color: #a1a1aa; font-size: 14px; line-height: 1.6; }}
-        .file-box {{
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 14px;
-            padding: 16px;
-            margin: 20px 0;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 13px;
-        }}
-        .guide-box {{
-            background: rgba(56, 189, 248, 0.06);
-            border: 1px solid rgba(56, 189, 248, 0.2);
-            border-radius: 16px;
-            padding: 20px;
-            margin-top: 16px;
-        }}
-        .guide-title {{ font-weight: 700; color: #38bdf8; font-size: 15px; margin-bottom: 10px; }}
-        ol {{ padding-left: 20px; color: #cbd5e1; font-size: 13px; line-height: 1.8; }}
-        code {{ background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 6px; color: #38bdf8; }}
-    </style>
-</head>
-<body>
-    <div class="card">
-        <div class="icon">⚡</div>
-        <h1>2GB+ MTProto Stream Activation Required</h1>
-        <p style="text-align:center;">This file exceeds Telegram's standard 20 MB Bot API download limit.</p>
-        
-        <div class="file-box">
-            <div>📁 <b>File:</b> {file_name}</div>
-            <div style="margin-top:6px;">📦 <b>Size:</b> {format_file_size(file_size)} (Limit: 20.00 MB)</div>
-        </div>
-
-        <div class="guide-box">
-            <div class="guide-title">💡 How to unlock 2GB+ streaming in 30 seconds:</div>
-            <ol>
-                <li>Visit <a href="https://my.telegram.org" target="_blank" style="color:#38bdf8;font-weight:700;">my.telegram.org</a> and log in.</li>
-                <li>Click <b>API development tools</b> and create an app (e.g. <i>KayiStream</i>).</li>
-                <li>Copy your <code>API_ID</code> and <code>API_HASH</code>.</li>
-                <li>Add them to the bot's <code>.env</code> file:
-                    <pre style="margin-top:8px;background:#000;padding:10px;border-radius:8px;color:#a5b4fc;font-size:12px;">API_ID=12345678&#10;API_HASH=abcdef0123456789abcdef0123456789</pre>
-                </li>
-            </ol>
-        </div>
-    </div>
-</body>
-</html>"""
-    return web.Response(text=error_html, content_type="text/html", status=200)
+    return web.Response(text="Streaming pipeline unavailable for this file size.", status=503)
 
 async def ping_self_loop():
     if not PING_URL:
@@ -880,7 +1078,7 @@ async def ping_self_loop():
             await asyncio.sleep(600)
 
 async def start_server():
-    # Initialize MTProto Pyrogram client if credentials exist
+    # Initialize MTProto Pyrogram client
     await init_pyrogram_client()
 
     app = web.Application()

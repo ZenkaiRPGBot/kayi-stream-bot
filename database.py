@@ -134,14 +134,14 @@ async def get_active_files(user_id: int | None = None, page: int = 1, page_size:
             count_cur = await db.execute("SELECT COUNT(*) FROM files WHERE user_id = ? AND expires_at > ?", (user_id, now.isoformat()))
             total = (await count_cur.fetchone())[0]
             cur = await db.execute(
-                "SELECT * FROM files WHERE user_id = ? AND expires_at > ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                "SELECT * FROM files WHERE user_id = ? AND expires_at > ? ORDER BY id ASC LIMIT ? OFFSET ?",
                 (user_id, now.isoformat(), page_size, offset)
             )
         else:
             count_cur = await db.execute("SELECT COUNT(*) FROM files WHERE expires_at > ?", (now.isoformat(),))
             total = (await count_cur.fetchone())[0]
             cur = await db.execute(
-                "SELECT * FROM files WHERE expires_at > ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                "SELECT * FROM files WHERE expires_at > ? ORDER BY id ASC LIMIT ? OFFSET ?",
                 (now.isoformat(), page_size, offset)
             )
         rows = await cur.fetchall()
@@ -152,7 +152,7 @@ async def get_user_files(user_id: int, limit: int = 10) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM files WHERE user_id = ? AND expires_at > ? ORDER BY id DESC LIMIT ?",
+            "SELECT * FROM files WHERE user_id = ? AND expires_at > ? ORDER BY id ASC LIMIT ?",
             (user_id, now.isoformat(), limit)
         ) as cursor:
             rows = await cursor.fetchall()

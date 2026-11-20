@@ -9,7 +9,6 @@ import psutil
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart
 from aiogram.enums import ParseMode
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import (
     BOT_TOKEN, OWNER_ID, LOG_CHANNEL_ID, BOT_START_TIME,
@@ -55,10 +54,10 @@ def get_system_load() -> dict:
         return {
             "proc_mem_mb": rss_mb,
             "cpu_pct": cpu_pct,
-            "status": "Optimal 🟢" if rss_mb < 250 else "High 🟡"
+            "status": "Optimal" if rss_mb < 250 else "High"
         }
     except Exception:
-        return {"proc_mem_mb": 0.0, "cpu_pct": 0.0, "status": "Normal 🟢"}
+        return {"proc_mem_mb": 0.0, "cpu_pct": 0.0, "status": "Normal"}
 
 def format_time_remaining(expires_at_iso: str) -> str:
     try:
@@ -98,20 +97,15 @@ async def send_rich_msg(chat_id: int | str, markdown: str, reply_markup: dict | 
 def build_rich_restart_markdown() -> str:
     return f"""# {BRAND_NAME} Online
 
-| Feature | Status |
-| :--- | :---: |
-| Bot Status | Online 🟢 |
-| Stream Engine | 128KB Chunked 🟢 |
-| Web Player | Plyr Cinema UI 🟢 |
-| Rich Messages | Telegram 10.1+ 🟢 |
-| Ecosystem | {CHANNEL_USERNAME} 🟢 |
+• **Version:** `2.5 Enterprise MTProto`
+• **Engine:** `Pyrogram MTProto 2GB+ Pipeline`
+• **Status:** `Active & Ready`
 
-### System Highlights
+### 🚀 Capabilities
 - High-speed direct browser downloads with RFC 7233 byte-range seeking
-- Executive glassmorphic Web Player with Plyr.js, PiP, and speed controls
-- Real-time catalog with incremental File IDs (#1, #2, etc.)
-- /files and /info commands for live bot load and technical metadata
-- Zero-disk RAM-optimized chunked streaming
+- Executive glassmorphic Web Player with Ambilight and Theater Mode
+- Real-time catalog with sequential File IDs (1, 2, etc.) sorted low to high
+- Zero-disk RAM-optimized chunked streaming up to 2GB/4GB
 
 *Ready to stream media.*"""
 
@@ -127,12 +121,10 @@ async def log_stream_generation(user: types.User, file_id_num: int, file_name: s
         return
     md = f"""# ⚡ Link Generated
 
-| Property | Value |
-| :--- | :--- |
-| **File ID** | `#{file_id_num}` |
-| **User** | `{user.full_name}` (`{user.id}`) |
-| **File** | `{file_name}` |
-| **Size** | `{file_size}` |
+• **File ID:** `{file_id_num}`
+• **User:** `{user.full_name}` (`{user.id}`)
+• **File:** `{file_name}`
+• **Size:** `{file_size}`
 
 [Direct Download]({dl_url})"""
     await send_rich_msg(LOG_CHANNEL_ID, md)
@@ -141,12 +133,10 @@ async def log_stream_generation(user: types.User, file_id_num: int, file_name: s
 async def cmd_start(message: types.Message):
     md = f"""# 🦅 {BRAND_NAME}
 
-| Capability | Details |
-| :--- | :--- |
-| **Direct Download** | Full-speed download links (IDM & ADM compatible) |
-| **Web Player** | Stream HD video online with subtitle & speed control |
-| **App Stream** | 1-Tap playback in VLC, MX Player, and Smart TVs |
-| **File ID Catalog** | Every file is indexed with an ID for easy tracking |
+• **Direct Download:** Full-speed download links (IDM & ADM compatible)
+• **Web Player:** Cinema-grade online streaming with real-time Ambilight
+• **App Stream:** 1-Tap playback in VLC, MX Player, and PotPlayer
+• **File Indexing:** Every file receives a clean numerical ID
 
 ### Getting Started
 Send or forward any **Video, Audio, or Document** to this chat to generate your link instantly."""
@@ -154,11 +144,11 @@ Send or forward any **Video, Audio, or Document** to this chat to generate your 
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "📁 Active Files", "callback_data": "show_files_1", "style": "primary"},
-                {"text": "📖 Streaming Guide", "callback_data": "help_guide", "style": "success"}
+                {"text": "Active Files", "callback_data": "show_files_1", "style": "primary"},
+                {"text": "Streaming Guide", "callback_data": "help_guide", "style": "success"}
             ],
             [
-                {"text": f"📢 Join {CHANNEL_USERNAME}", "url": f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"}
+                {"text": f"Join {CHANNEL_USERNAME}", "url": f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"}
             ]
         ]
     }
@@ -170,23 +160,21 @@ Send or forward any **Video, Audio, or Document** to this chat to generate your 
 async def cmd_help(message: types.Message):
     md = f"""# 📖 {BRAND_NAME} — Streaming Guide
 
-| Platform | Recommended App | Playback Method |
-| :--- | :--- | :--- |
-| **Browser** | Chrome / Safari | Open **Web Player** for instant playback |
-| **Android** | MX Player / VLC | Paste Direct Link or launch via Web Player |
-| **PC / Mac** | VLC / PotPlayer | Media ➔ Open Network Stream ➔ Paste Link |
-| **Smart TV** | Kodi / VLC for TV | Enter Direct Link in Network Stream |
+• **Browser:** Chrome, Edge, Safari, Firefox for instant Web Player
+• **Android:** MX Player or VLC (paste direct link or launch from Web Player)
+• **PC / Mac:** VLC or PotPlayer (Media ➔ Open Network Stream)
+• **Smart TV:** Kodi or VLC for Android TV / FireStick
 
 ### Commands
-- `/files [page]` — Active files catalog and real-time system load
-- `/info <id>` — Detailed technical metadata for any file ID
+- `/files [page]` — View active catalog sorted low to high with system load
+- `/info <id>` — Deep technical inspection for any file ID
 - `/myfiles` — Quick list of your generated links
-- `/stats` — Platform streaming metrics and bandwidth
+- `/stats` — Platform metrics and bandwidth volume
 - `/ping` — Real-time latency and uptime diagnostics"""
 
     keyboard = {
         "inline_keyboard": [
-            [{"text": "📁 View Files & Load", "callback_data": "show_files_1", "style": "primary"}]
+            [{"text": "View Files & Load", "callback_data": "show_files_1", "style": "primary"}]
         ]
     }
     await send_rich_msg(message.chat.id, md, reply_markup=keyboard)
@@ -216,43 +204,40 @@ async def build_files_markdown(filter_user: int | None, page: int = 1, is_owner:
 
     title = "🦅 Current Files & System Load" if is_owner else "📁 Your Active Files & Load"
 
-    meta_table = f"""# {title}
+    header_block = f"""# {title}
 
-| Metric | Status |
-| :--- | :---: |
-| **Active Files** | `{total}` |
-| **Storage Volume** | `{active_mb:.1f} MB` |
-| **RAM Load** | `{load['proc_mem_mb']:.1f} MB` ({load['status']}) |
-| **Total Downloads** | `{stats['total_downloads']}` |
+• **Active Files:** `{total}`
+• **Storage Volume:** `{active_mb:.1f} MB`
+• **RAM Load:** `{load['proc_mem_mb']:.1f} MB` ({load['status']})
+• **Total Downloads:** `{stats['total_downloads']}`
+
+---
 """
 
     if not files:
-        catalog_section = "\n*No active files found. Send a file to register ID #1!*"
+        catalog_section = "\n*No active files found. Send a file to register ID 1!*"
     else:
-        catalog_section = "\n### 📁 Active Catalog\n| ID | File Name | Size | Time Left |\n| :---: | :--- | :---: | :---: |\n"
+        catalog_section = "### 📁 Active Catalog (Sorted ID 1 → N)\n\n"
         for f in files:
             f_id = f["id"]
             name = f["file_name"]
-            # Shorten name if too long for table
-            if len(name) > 22:
-                name = name[:19] + "..."
             size_fmt = format_file_size(f["file_size"])
             time_left = format_time_remaining(f["expires_at"])
-            catalog_section += f"| `#{f_id}` | `{name}` | `{size_fmt}` | `{time_left}` |\n"
+            catalog_section += f"**ID: {f_id}** • `{size_fmt}` • `{time_left}`\n`{name}`\n\n"
 
-    footer = f"\n*Page {page} of {total_pages} • Type /info <id> for link details*"
+    footer = f"---\n*Page {page} of {total_pages} • Type /info <id> for details*"
 
     btn_row_info = []
     if files:
         for f in files[:4]:
-            btn_row_info.append({"text": f"ℹ️ #{f['id']}", "callback_data": f"info_file_{f['id']}", "style": "primary"})
+            btn_row_info.append({"text": f"Info {f['id']}", "callback_data": f"info_file_{f['id']}", "style": "primary"})
 
     nav_row = []
     if page > 1:
-        nav_row.append({"text": "⬅️ Prev", "callback_data": f"show_files_{page - 1}", "style": "primary"})
-    nav_row.append({"text": f"📄 {page}/{total_pages}", "callback_data": "noop"})
+        nav_row.append({"text": "Previous", "callback_data": f"show_files_{page - 1}", "style": "primary"})
+    nav_row.append({"text": f"{page} / {total_pages}", "callback_data": "noop"})
     if page < total_pages:
-        nav_row.append({"text": "Next ➡️", "callback_data": f"show_files_{page + 1}", "style": "primary"})
+        nav_row.append({"text": "Next", "callback_data": f"show_files_{page + 1}", "style": "primary"})
 
     inline_keyboard = []
     if btn_row_info:
@@ -260,7 +245,7 @@ async def build_files_markdown(filter_user: int | None, page: int = 1, is_owner:
     if nav_row:
         inline_keyboard.append(nav_row)
 
-    return (meta_table + catalog_section + footer, {"inline_keyboard": inline_keyboard})
+    return (header_block + catalog_section + footer, {"inline_keyboard": inline_keyboard})
 
 @dp.message(Command("info"))
 @dp.message(Command("file"))
@@ -269,11 +254,8 @@ async def cmd_info(message: types.Message):
     if len(parts) < 2:
         md = """# ❓ Command Usage
 
-| Command | Action |
-| :--- | :--- |
-| `/info 1` | Inspect file by ID `#1` |
-| `/info #1` | Inspect with hash symbol |
-| `/info <token>` | Lookup by token string |
+• `/info 1` — Inspect file by numerical ID
+• `/info <token>` — Lookup by unique URL token
 
 *Type /files to view all active file IDs.*"""
         await send_rich_msg(message.chat.id, md)
@@ -287,12 +269,10 @@ async def send_file_info_card(chat_id: int | str, query_id: str):
     if not record:
         md = f"""# ❌ File Not Found
 
-| Property | Value |
-| :--- | :--- |
-| **Query ID** | `{query_id}` |
-| **Status** | Expired or Revoked |
+• **Query:** `{query_id}`
+• **Status:** `Expired or Revoked`
 
-*Check /files to view all current active files.*"""
+*Check /files to view current active catalog.*"""
         await send_rich_msg(chat_id, md)
         return
 
@@ -312,30 +292,30 @@ async def send_file_info_card(chat_id: int | str, query_id: str):
     dl_url = f"{srv_url}/dl/{token}"
     watch_url = f"{srv_url}/watch/{token}"
 
-    md = f"""# 📋 File Details — #{f_id}
+    md = f"""# 📋 File Details — ID {f_id}
 
-| Attribute | Value |
-| :--- | :--- |
-| **File Name** | `{file_name}` |
-| **Size** | `{size_formatted}` (`{file_size:,} bytes`) |
-| **Media Type** | `{category.upper()}` (`{mime_type}`) |
-| **Uploader** | `{uploader_id}` |
-| **Uploaded At** | `{created_str} UTC` |
-| **Status** | `{time_left}` |
-| **Downloads** | `{dls} times` |
+• **File Name:**
+`{file_name}`
+• **File ID:** `{f_id}`
+• **Size:** `{size_formatted}` (`{file_size:,} bytes`)
+• **Media Type:** `{category.upper()}` (`{mime_type}`)
+• **Uploader:** `{uploader_id}`
+• **Uploaded At:** `{created_str} UTC`
+• **Validity:** `{time_left}`
+• **Downloads:** `{dls} times`
 
-### 🔗 Streaming & Download
+### 🚀 Direct Links
 - **Web Player:** `{watch_url}`
 - **Direct Link:** `{dl_url}`"""
 
     keyboard_rows = [
         [
-            {"text": "▶️ Watch Online", "url": watch_url, "style": "success"},
-            {"text": "🚀 Direct Download", "url": dl_url, "style": "primary"}
+            {"text": "Watch Online", "url": watch_url, "style": "success"},
+            {"text": "Direct Download", "url": dl_url, "style": "primary"}
         ],
         [
-            {"text": "🗑️ Delete File", "callback_data": f"revoke_id_{f_id}", "style": "danger"},
-            {"text": "📁 All Files", "callback_data": "show_files_1", "style": "primary"}
+            {"text": "Delete File", "callback_data": f"revoke_id_{f_id}", "style": "danger"},
+            {"text": "All Files", "callback_data": "show_files_1", "style": "primary"}
         ]
     ]
 
@@ -344,7 +324,7 @@ async def send_file_info_card(chat_id: int | str, query_id: str):
 @dp.message(Command("myfiles"))
 async def cmd_myfiles(message: types.Message):
     user_id = message.from_user.id
-    files = await db.get_user_files(user_id, limit=5)
+    files = await db.get_user_files(user_id, limit=6)
     if not files:
         md = """# 📁 My Active Files
 
@@ -354,23 +334,20 @@ Send any video or file to generate your first link!"""
         return
 
     md = f"# 📁 Your Active Links ({len(files)} Recent)\n\n"
-    md += "| ID | Name | Size | Views |\n| :---: | :--- | :---: | :---: |\n"
     keyboard_rows = []
 
     for f in files:
         f_id = f["id"]
         name = f["file_name"]
-        if len(name) > 20:
-            name = name[:17] + "..."
         size_str = format_file_size(f["file_size"])
         dls = f["download_count"]
-        md += f"| `#{f_id}` | `{name}` | `{size_str}` | `{dls}` |\n"
+        md += f"**ID: {f_id}** • `{size_str}` • `{dls} views`\n`{name}`\n\n"
         keyboard_rows.append([
-            {"text": f"ℹ️ Details #{f_id}", "callback_data": f"info_file_{f_id}", "style": "primary"},
-            {"text": "🗑️ Revoke", "callback_data": f"revoke_id_{f_id}", "style": "danger"}
+            {"text": f"Details {f_id}", "callback_data": f"info_file_{f_id}", "style": "primary"},
+            {"text": "Revoke", "callback_data": f"revoke_id_{f_id}", "style": "danger"}
         ])
 
-    md += "\n*Tap Details to get direct streaming and player links.*"
+    md += "---\n*Tap Details to inspect player and streaming links.*"
     await send_rich_msg(message.chat.id, md, reply_markup={"inline_keyboard": keyboard_rows})
 
 @dp.message(Command("stats"))
@@ -383,16 +360,14 @@ async def cmd_stats(message: types.Message):
 
     md = f"""# 📊 {BRAND_NAME} Statistics
 
-| Metric | Value |
-| :--- | :---: |
-| **Active Links** | `{stats['active_links']}` (`{active_mb:.1f} MB`) |
-| **Total Files** | `{stats['total_files']}` |
-| **Total Downloads** | `{stats['total_downloads']}` |
-| **Cumulative Data** | `{total_gb:.2f} GB` |
-| **Process RAM** | `{load['proc_mem_mb']:.1f} MB` |
-| **CPU Load** | `{load['cpu_pct']}%` |
-| **Uptime** | `{uptime}` |
-| **System Status** | `Healthy 🟢` |"""
+• **Active Links:** `{stats['active_links']}` (`{active_mb:.1f} MB`)
+• **Total Files:** `{stats['total_files']}`
+• **Total Downloads:** `{stats['total_downloads']}`
+• **Cumulative Data:** `{total_gb:.2f} GB`
+• **Process RAM:** `{load['proc_mem_mb']:.1f} MB`
+• **CPU Load:** `{load['cpu_pct']}%`
+• **Uptime:** `{uptime}`
+• **MTProto Engine:** `Connected 🟢`"""
 
     await send_rich_msg(message.chat.id, md)
 
@@ -404,11 +379,9 @@ async def cmd_ping(message: types.Message, bot: Bot):
     uptime = get_uptime_string()
     md = f"""# 🦅 {BRAND_NAME} Pong
 
-| Metric | Status |
-| :--- | :---: |
-| **Latency** | `{latency:.1f} ms` |
-| **Uptime** | `{uptime}` |
-| **Health** | `Healthy 🟢` |"""
+• **API Latency:** `{latency:.1f} ms`
+• **System Uptime:** `{uptime}`
+• **Status:** `Healthy 🟢`"""
     await send_rich_msg(message.chat.id, md)
 
 @dp.message(Command("restart"))
@@ -444,13 +417,11 @@ async def callback_revoke_id(query: types.CallbackQuery):
     user_id = query.from_user.id
     deleted = await db.delete_file_by_id_or_token(f_id, user_id=None if user_id == OWNER_ID else user_id)
     if deleted:
-        await query.answer(f"File #{f_id} revoked! 🗑️", show_alert=True)
+        await query.answer(f"File ID {f_id} revoked! 🗑️", show_alert=True)
         md = f"""# 🗑️ Link Revoked
 
-| Item | Status |
-| :--- | :--- |
-| **File ID** | `#{f_id}` |
-| **Action** | Permanently Deleted |
+• **File ID:** `{f_id}`
+• **Action:** `Permanently Deleted`
 
 *This stream link is now dead.*"""
         await send_rich_msg(query.message.chat.id, md)
@@ -524,46 +495,41 @@ async def handle_media_file(message: types.Message):
     dl_url = f"{srv_url}/dl/{token}"
     watch_url = f"{srv_url}/watch/{token}"
 
-    extra_hint = ""
-    if file_size > 20 * 1024 * 1024 and not API_ID:
-        extra_hint = f"\n\n> ⚠️ *Note:* File is {size_formatted} (> 20 MB). Telegram requires API_ID & API_HASH to stream files over 20 MB."
+    md = f"""# 🦅 Link Ready — ID {file_db_id}
 
-    md = f"""# 🦅 Link Ready — #{file_db_id}
-
-| Property | Details |
-| :--- | :--- |
-| **File ID** | `#{file_db_id}` |
-| **File Name** | `{file_name}` |
-| **Size** | `{size_formatted}` |
-| **Format** | `{cat_label}` |
-| **Validity** | `{LINK_EXPIRY_HOURS} Hours` |
+• **File Name:**
+`{file_name}`
+• **File ID:** `{file_db_id}`
+• **Size:** `{size_formatted}`
+• **Format:** `{cat_label}`
+• **Validity:** `{LINK_EXPIRY_HOURS} Hours`
 
 ### 🚀 Direct Links
 - **Web Player:** `{watch_url}`
 - **Fast Download:** `{dl_url}`
 
-*Stream directly in browser, VLC, or MX Player with full seeking.*{extra_hint}"""
+*Stream directly in browser, VLC, or MX Player with full seeking.*"""
 
     keyboard_rows = []
     if is_valid_tg_button_url(watch_url) and is_valid_tg_button_url(dl_url):
         keyboard_rows.append([
-            {"text": "▶️ Watch Online", "url": watch_url, "style": "success"},
-            {"text": "🚀 Download", "url": dl_url, "style": "primary"}
+            {"text": "Watch Online", "url": watch_url, "style": "success"},
+            {"text": "Download", "url": dl_url, "style": "primary"}
         ])
 
     keyboard_rows.append([
-        {"text": "ℹ️ Info Details", "callback_data": f"info_file_{file_db_id}", "style": "primary"},
-        {"text": "🗑️ Revoke Link", "callback_data": f"revoke_id_{file_db_id}", "style": "danger"}
+        {"text": "Details", "callback_data": f"info_file_{file_db_id}", "style": "primary"},
+        {"text": "Revoke Link", "callback_data": f"revoke_id_{file_db_id}", "style": "danger"}
     ])
     keyboard_rows.append([
-        {"text": f"📢 Join {CHANNEL_USERNAME}", "url": f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"}
+        {"text": f"Join {CHANNEL_USERNAME}", "url": f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"}
     ])
 
     sent = await send_rich_msg(message.chat.id, md, reply_markup={"inline_keyboard": keyboard_rows})
     if not sent:
-        # Fallback to standard message if rich message encounters error
+        # Fallback to standard HTML if rich message encounters error
         await message.reply(
-            f"<b>🦅 Link Ready — #{file_db_id}</b>\n\n"
+            f"<b>🦅 Link Ready — ID {file_db_id}</b>\n\n"
             f"• <b>File:</b> <code>{file_name}</code>\n"
             f"• <b>Size:</b> <code>{size_formatted}</code>\n"
             f"• <b>Player:</b> {watch_url}\n"
@@ -584,26 +550,33 @@ async def main():
     print(f"Launching {BRAND_NAME} Bot...")
     await db.init_db()
 
-    connector = aiohttp.TCPConnector(limit=100, ttl_dns_cache=300, ssl=False, enable_cleanup_closed=True)
-    HTTP_SESSION = aiohttp.ClientSession(connector=connector)
+    # Clean expired records on startup
+    cleaned = await db.cleanup_expired_files()
+    if cleaned > 0:
+        print(f"[db] Cleaned {cleaned} expired files on startup.")
+
+    # Start streaming server with MTProto
+    server_runner = await start_server()
+
+    # Shared HTTP ClientSession
+    HTTP_SESSION = aiohttp.ClientSession()
 
     bot = Bot(token=BOT_TOKEN)
-    runner = await start_server()
-    await bot.delete_webhook(drop_pending_updates=True)
 
-    await send_rich_restart_notification(bot)
+    # Auto-restart notification
+    asyncio.create_task(send_rich_restart_notification(bot))
 
-    print(f"{BRAND_NAME} Bot is actively polling. Ready to receive requests.")
+    print(f"{BRAND_NAME} Bot active. Serving requests with zero-disk RAM chunk streaming.")
     try:
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         if HTTP_SESSION and not HTTP_SESSION.closed:
             await HTTP_SESSION.close()
         await bot.session.close()
-        await runner.cleanup()
+        await server_runner.cleanup()
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        print("\nBot stopped.")
+        print("\nBot shutting down safely...")
