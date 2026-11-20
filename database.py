@@ -72,6 +72,49 @@ async def increment_download_count(token: str):
         await db.execute("UPDATE files SET download_count = download_count + 1 WHERE token = ?", (token,))
         await db.commit()
 
+async def delete_file_record(token: str, user_id: int = None) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        if user_id:
+            res = await db.execute("DELETE FROM files WHERE token = ? AND user_id = ?", (token, user_id))
+        else:
+            res = await db.execute("DELETE FROM files WHERE token = ?", (token,))
+        await db.commit()
+        return res.rowcount > 0
+
+async def get_user_files(user_id: int, limit: int = 10) -> list[dict]:
+    now = datetime.now(timezone.utc)
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM files WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC LIMIT ?",
+            (user_id, now.isoformat(), limit)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+async def get_global_stats() -> dict:
+    now = datetime.now(timezone.utc)
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*), COALESCE(SUM(download_count), 0), COALESCE(SUM(file_size), 0) FROM files") as c1:
+            total_files, total_downloads, total_bytes = await c1.fetchone()
+            
+        async with db.execute("SELECT COUNT(*) FROM files WHERE expires_at > ?", (now.isoformat(),)) as c2:
+            active_links = (await c2.fetchone())[0]
+
+        return {
+            "total_files": total_files or 0,
+            "active_links": active_links or 0,
+            "total_downloads": total_downloads or 0,
+            "total_bytes": total_bytes or 0
+        }
+
+async def cleanup_expired_files() -> int:
+    now = datetime.now(timezone.utc)
+    async with aiosqlite.connect(DB_PATH) as db:
+        res = await db.execute("DELETE FROM files WHERE expires_at < ?", (now.isoformat(),))
+        await db.commit()
+        return res.rowcount
+
 async def check_rate_limit(user_id: int, limit: int = 5) -> bool:
     """Returns True if within rate limit, False if rate limited (more than 5 files in last 60 seconds)."""
     now = datetime.now(timezone.utc)
