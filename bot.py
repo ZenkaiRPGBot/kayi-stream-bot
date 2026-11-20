@@ -14,7 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import (
     BOT_TOKEN, OWNER_ID, LOG_CHANNEL_ID, BOT_START_TIME,
     BRAND_NAME, BOT_USERNAME, CHANNEL_USERNAME, LINK_EXPIRY_HOURS,
-    get_server_url
+    API_ID, API_HASH, get_server_url
 )
 import database as db
 from server import start_server, format_file_size, get_media_category
@@ -524,6 +524,10 @@ async def handle_media_file(message: types.Message):
     dl_url = f"{srv_url}/dl/{token}"
     watch_url = f"{srv_url}/watch/{token}"
 
+    extra_hint = ""
+    if file_size > 20 * 1024 * 1024 and not API_ID:
+        extra_hint = f"\n\n> ⚠️ *Note:* File is {size_formatted} (> 20 MB). Telegram requires API_ID & API_HASH to stream files over 20 MB."
+
     md = f"""# 🦅 Link Ready — #{file_db_id}
 
 | Property | Details |
@@ -538,7 +542,7 @@ async def handle_media_file(message: types.Message):
 - **Web Player:** `{watch_url}`
 - **Fast Download:** `{dl_url}`
 
-*Stream directly in browser, VLC, or MX Player with full seeking.*"""
+*Stream directly in browser, VLC, or MX Player with full seeking.*{extra_hint}"""
 
     keyboard_rows = []
     if is_valid_tg_button_url(watch_url) and is_valid_tg_button_url(dl_url):

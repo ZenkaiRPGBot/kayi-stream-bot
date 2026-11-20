@@ -9,6 +9,8 @@ BOT_START_TIME = datetime.now(timezone.utc)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 OWNER_ID = int(os.getenv("OWNER_ID", "986380678"))
 LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID", "-1004495645007").strip()
+API_ID = os.getenv("API_ID", "").strip()
+API_HASH = os.getenv("API_HASH", "").strip()
 
 BRAND_NAME = "Kayi Stream"
 BOT_USERNAME = "@KayiStreamBot"
