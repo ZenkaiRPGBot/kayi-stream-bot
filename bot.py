@@ -13,7 +13,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import (
     BOT_TOKEN, OWNER_ID, LOG_CHANNEL_ID, BOT_START_TIME,
-    BRAND_NAME, BOT_USERNAME, CHANNEL_USERNAME, SERVER_URL, LINK_EXPIRY_HOURS
+    BRAND_NAME, BOT_USERNAME, CHANNEL_USERNAME, LINK_EXPIRY_HOURS,
+    get_server_url
 )
 import database as db
 from server import start_server, format_file_size, get_media_category
@@ -153,8 +154,8 @@ Send or forward any **Video, Audio, or Document** to this chat to generate your 
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "📁 View Active Files", "callback_data": "show_files_1"},
-                {"text": "📖 Streaming Guide", "callback_data": "help_guide"}
+                {"text": "📁 Active Files", "callback_data": "show_files_1", "style": "primary"},
+                {"text": "📖 Streaming Guide", "callback_data": "help_guide", "style": "success"}
             ],
             [
                 {"text": f"📢 Join {CHANNEL_USERNAME}", "url": f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"}
@@ -185,7 +186,7 @@ async def cmd_help(message: types.Message):
 
     keyboard = {
         "inline_keyboard": [
-            [{"text": "📁 View Files & Load", "callback_data": "show_files_1"}]
+            [{"text": "📁 View Files & Load", "callback_data": "show_files_1", "style": "primary"}]
         ]
     }
     await send_rich_msg(message.chat.id, md, reply_markup=keyboard)
@@ -244,14 +245,14 @@ async def build_files_markdown(filter_user: int | None, page: int = 1, is_owner:
     btn_row_info = []
     if files:
         for f in files[:4]:
-            btn_row_info.append({"text": f"ℹ️ #{f['id']}", "callback_data": f"info_file_{f['id']}"})
+            btn_row_info.append({"text": f"ℹ️ #{f['id']}", "callback_data": f"info_file_{f['id']}", "style": "primary"})
 
     nav_row = []
     if page > 1:
-        nav_row.append({"text": "⬅️ Prev", "callback_data": f"show_files_{page - 1}"})
+        nav_row.append({"text": "⬅️ Prev", "callback_data": f"show_files_{page - 1}", "style": "primary"})
     nav_row.append({"text": f"📄 {page}/{total_pages}", "callback_data": "noop"})
     if page < total_pages:
-        nav_row.append({"text": "Next ➡️", "callback_data": f"show_files_{page + 1}"})
+        nav_row.append({"text": "Next ➡️", "callback_data": f"show_files_{page + 1}", "style": "primary"})
 
     inline_keyboard = []
     if btn_row_info:
@@ -307,8 +308,9 @@ async def send_file_info_card(chat_id: int | str, query_id: str):
     time_left = format_time_remaining(record["expires_at"])
     created_str = record["created_at"].replace("T", " ")[:19]
 
-    dl_url = f"{SERVER_URL}/dl/{token}"
-    watch_url = f"{SERVER_URL}/watch/{token}"
+    srv_url = get_server_url()
+    dl_url = f"{srv_url}/dl/{token}"
+    watch_url = f"{srv_url}/watch/{token}"
 
     md = f"""# 📋 File Details — #{f_id}
 
@@ -326,18 +328,16 @@ async def send_file_info_card(chat_id: int | str, query_id: str):
 - **Web Player:** `{watch_url}`
 - **Direct Link:** `{dl_url}`"""
 
-    keyboard_rows = []
-    # Only add URL buttons if SERVER_URL is a valid public URL (not localhost)
-    if is_valid_tg_button_url(watch_url) and is_valid_tg_button_url(dl_url):
-        keyboard_rows.append([
-            {"text": "📺 Web Player", "url": watch_url},
-            {"text": "🚀 Fast Download", "url": dl_url}
-        ])
-
-    keyboard_rows.append([
-        {"text": "🗑️ Delete File", "callback_data": f"revoke_id_{f_id}"},
-        {"text": "📁 All Files", "callback_data": "show_files_1"}
-    ])
+    keyboard_rows = [
+        [
+            {"text": "▶️ Watch Online", "url": watch_url, "style": "success"},
+            {"text": "🚀 Direct Download", "url": dl_url, "style": "primary"}
+        ],
+        [
+            {"text": "🗑️ Delete File", "callback_data": f"revoke_id_{f_id}", "style": "danger"},
+            {"text": "📁 All Files", "callback_data": "show_files_1", "style": "primary"}
+        ]
+    ]
 
     await send_rich_msg(chat_id, md, reply_markup={"inline_keyboard": keyboard_rows})
 
@@ -366,8 +366,8 @@ Send any video or file to generate your first link!"""
         dls = f["download_count"]
         md += f"| `#{f_id}` | `{name}` | `{size_str}` | `{dls}` |\n"
         keyboard_rows.append([
-            {"text": f"ℹ️ Details #{f_id}", "callback_data": f"info_file_{f_id}"},
-            {"text": f"🗑️ Revoke", "callback_data": f"revoke_id_{f_id}"}
+            {"text": f"ℹ️ Details #{f_id}", "callback_data": f"info_file_{f_id}", "style": "primary"},
+            {"text": "🗑️ Revoke", "callback_data": f"revoke_id_{f_id}", "style": "danger"}
         ])
 
     md += "\n*Tap Details to get direct streaming and player links.*"
@@ -520,8 +520,9 @@ async def handle_media_file(message: types.Message):
 
     file_db_id = record["id"]
     size_formatted = format_file_size(file_size)
-    dl_url = f"{SERVER_URL}/dl/{token}"
-    watch_url = f"{SERVER_URL}/watch/{token}"
+    srv_url = get_server_url()
+    dl_url = f"{srv_url}/dl/{token}"
+    watch_url = f"{srv_url}/watch/{token}"
 
     md = f"""# 🦅 Link Ready — #{file_db_id}
 
@@ -542,13 +543,13 @@ async def handle_media_file(message: types.Message):
     keyboard_rows = []
     if is_valid_tg_button_url(watch_url) and is_valid_tg_button_url(dl_url):
         keyboard_rows.append([
-            {"text": "📺 Web Player", "url": watch_url},
-            {"text": "🚀 Fast Download", "url": dl_url}
+            {"text": "▶️ Watch Online", "url": watch_url, "style": "success"},
+            {"text": "🚀 Download", "url": dl_url, "style": "primary"}
         ])
 
     keyboard_rows.append([
-        {"text": "ℹ️ Info Card", "callback_data": f"info_file_{file_db_id}"},
-        {"text": "🗑️ Revoke", "callback_data": f"revoke_id_{file_db_id}"}
+        {"text": "ℹ️ Info Details", "callback_data": f"info_file_{file_db_id}", "style": "primary"},
+        {"text": "🗑️ Revoke Link", "callback_data": f"revoke_id_{file_db_id}", "style": "danger"}
     ])
     keyboard_rows.append([
         {"text": f"📢 Join {CHANNEL_USERNAME}", "url": f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"}
