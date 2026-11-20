@@ -13,8 +13,12 @@ from config import (
     PORT, PING_URL, BRAND_NAME, CHANNEL_USERNAME, get_server_url
 )
 import database as db
+import tracks
 
 mimetypes.init()
+
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(STATIC_DIR, exist_ok=True)
 
 # Pyrogram MTProto Client for unlimited streaming (handles files up to 2GB/4GB)
 pyrogram_client = None
@@ -32,7 +36,8 @@ async def init_pyrogram_client():
                 api_hash=clean_api_hash,
                 bot_token=BOT_TOKEN,
                 no_updates=True,
-                in_memory=True
+                in_memory=True,
+                max_concurrent_transmissions=10
             )
             await pyrogram_client.start()
             me = await pyrogram_client.get_me()
@@ -84,53 +89,58 @@ async def handle_root(request: web.Request) -> web.Response:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#F4F6FC">
+<meta name="theme-color" content="#FFFFFF">
 <title>{BRAND_NAME}</title>
 <style>
-:root{{
-  --canvas:#F4F6FC; --surface:#FFFFFF; --ink:#0E1426; --muted:#5A6480;
-  --blue:#2D6BFF; --violet:#8B5CF6; --pink:#FF4D8D; --green:#00C27A; --line:#E4E9F4;
-  --radius:22px;
+:root {{
+  --bg-color: #FFFFFF;
+  --surface-color: #F5F5F7;
+  --text-primary: #1D1D1F;
+  --text-secondary: #6E6E73;
+  --border-color: #E5E5EA;
+  --accent-color: #0A84FF;
+  --radius-md: 12px;
 }}
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{
-  font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  background:var(--canvas);color:var(--ink);min-height:100vh;
-  display:flex;align-items:center;justify-content:center;padding:24px;
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
 }}
-.card{{
-  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
-  padding:36px 32px;max-width:480px;width:100%;text-align:center;
-  box-shadow:0 14px 30px -20px rgba(14,20,38,.25);
+.card {{
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  padding: 40px 32px;
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }}
-.logo{{
-  width:44px;height:44px;border-radius:12px;margin:0 auto 16px;display:grid;place-items:center;
-  color:#fff;font-weight:900;font-size:20px;
-  background:linear-gradient(135deg,var(--blue),var(--violet));
-  box-shadow:0 8px 20px -6px var(--blue);
+h1 {{ font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }}
+p {{ color: var(--text-secondary); font-size: 14px; line-height: 1.5; margin-bottom: 24px; }}
+.stats {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 28px; }}
+.stat {{ background-color: var(--surface-color); border-radius: var(--radius-md); padding: 12px 8px; }}
+.stat-num {{ font-size: 17px; font-weight: 700; color: var(--accent-color); }}
+.stat-lbl {{ font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-top: 3px; letter-spacing: 0.06em; }}
+.btn {{
+  display: flex; align-items: center; justify-content: center; width: 100%;
+  padding: 13px; border-radius: var(--radius-md); font-size: 15px; font-weight: 600;
+  text-decoration: none; color: #FFFFFF; background-color: var(--accent-color);
+  transition: opacity 150ms ease-out;
 }}
-h1{{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}}
-p{{color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:24px}}
-.stats{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px}}
-.stat{{background:var(--canvas);border:1px solid var(--line);border-radius:14px;padding:12px 8px}}
-.stat-num{{font-size:18px;font-weight:800;color:var(--blue)}}
-.stat-lbl{{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-top:2px}}
-.btn{{
-  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
-  padding:14px;border:0;border-radius:14px;cursor:pointer;
-  font-family:inherit;font-size:15px;font-weight:700;text-decoration:none;
-  color:#fff;background:var(--blue);
-  box-shadow:0 10px 24px -10px var(--blue);
-  transition:transform .12s ease;
-}}
-.btn:active{{transform:scale(.98)}}
+.btn:hover {{ opacity: 0.9; }}
 </style>
 </head>
 <body>
 <div class="card">
-  <div class="logo">K</div>
   <h1>{BRAND_NAME}</h1>
-  <p>Direct Telegram file downloads and high-speed web playback. Fast, minimal, and responsive.</p>
+  <p>Minimal, high-performance streaming and file downloads. No clutter, zero latency.</p>
   <div class="stats">
     <div class="stat">
       <div class="stat-num">{stats['active_links']}</div>
@@ -145,7 +155,7 @@ p{{color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:24px}}
       <div class="stat-lbl">Downloads</div>
     </div>
   </div>
-  <a href="https://t.me/{CHANNEL_USERNAME.lstrip('@')}" class="btn">Open in Telegram</a>
+  <a href="https://t.me/{CHANNEL_USERNAME.lstrip('@')}" class="btn">Launch on Telegram</a>
 </div>
 </body>
 </html>"""
@@ -166,8 +176,8 @@ async def handle_watch(request: web.Request) -> web.Response:
     record = await db.get_file_by_id_or_token(identifier)
     if not record:
         return web.Response(
-            text="""<!DOCTYPE html><html><body style="background:#F4F6FC;color:#0E1426;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
-            <div style="text-align:center;padding:24px;"><h1>Link expired or not found</h1><p style="color:#5A6480;margin-top:8px;">This link has expired or has been removed.</p></div></body></html>""",
+            text="""<!DOCTYPE html><html><body style="background:#FFFFFF;color:#1D1D1F;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+            <div style="text-align:center;padding:24px;"><h1>Link expired or not found</h1><p style="color:#6E6E73;margin-top:8px;">This link has expired or has been removed.</p></div></body></html>""",
             content_type="text/html",
             status=404
         )
@@ -177,7 +187,6 @@ async def handle_watch(request: web.Request) -> web.Response:
     file_name = record["file_name"]
     file_size = record["file_size"]
     file_size_fmt = format_file_size(file_size)
-    mime_type = record.get("mime_type") or "application/octet-stream"
     ext = os.path.splitext(file_name)[1].lower().lstrip(".")
     fmt_label = ext.upper() if ext else "FILE"
     quality_label = detect_quality_tag(file_name, file_size)
@@ -185,6 +194,12 @@ async def handle_watch(request: web.Request) -> web.Response:
     server_base = get_server_url()
     stream_url = f"{server_base}/stream/{token}"
     dl_url = f"{server_base}/dl/{token}"
+
+    # Third-party player schemes
+    clean_stream_url = stream_url.replace("https://", "").replace("http://", "")
+    vlc_url = f"vlc://{clean_stream_url}"
+    mx_url = f"intent:{stream_url}#Intent;package=com.mxtech.videoplayer.ad;type=video/*;S.title={file_name};end"
+    potplayer_url = f"potplayer://{stream_url}"
 
     file_data_json = json.dumps({
         "id": f_id,
@@ -196,311 +211,127 @@ async def handle_watch(request: web.Request) -> web.Response:
         "download": dl_url
     })
 
-    # Bright Stage Player HTML exactly following Claude UI/UX specification
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#F4F6FC">
-<title>{file_name} · {BRAND_NAME}</title>
-<style>
-:root{{
-  --canvas:#F4F6FC; --surface:#FFFFFF; --ink:#0E1426; --muted:#5A6480;
-  --blue:#2D6BFF; --violet:#8B5CF6; --pink:#FF4D8D; --green:#00C27A; --line:#E4E9F4;
-  --radius:22px;
-}}
-*{{box-sizing:border-box;margin:0;padding:0}}
-html{{-webkit-text-size-adjust:100%}}
-body{{
-  font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  background:var(--canvas);color:var(--ink);min-height:100vh;
-  line-height:1.5;-webkit-font-smoothing:antialiased;
-  padding-bottom:env(safe-area-inset-bottom,0px);
-}}
+    # Read template from static/index.html
+    template_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(template_path):
+        with open(template_path, "r", encoding="utf-8") as f:
+            template = f.read()
+    else:
+        template = "<html><body><h1>Player template missing</h1></body></html>"
 
-/* ---------- Header ---------- */
-.top{{
-  position:sticky;top:0;z-index:20;
-  display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:env(safe-area-inset-top,0px) 20px 0;height:calc(60px + env(safe-area-inset-top,0px));
-  background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(14px);
-  -webkit-backdrop-filter:saturate(180%) blur(14px);
-  border-bottom:1px solid var(--line);
-}}
-.brand{{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px;letter-spacing:-.02em}}
-.logo{{
-  width:32px;height:32px;border-radius:10px;display:grid;place-items:center;
-  color:#fff;font-weight:900;font-size:16px;
-  background:linear-gradient(135deg,var(--blue),var(--violet));
-  box-shadow:0 6px 16px -6px var(--blue);
-}}
-.chip{{
-  font-size:12px;font-weight:700;color:var(--blue);
-  background:#EAF0FF;padding:6px 12px;border-radius:999px;white-space:nowrap;
-}}
+    # Replace template variables
+    html = template.replace("{{file_name}}", file_name)
+    html = html.replace("{{brand_name}}", BRAND_NAME)
+    html = html.replace("{{file_id}}", str(f_id))
+    html = html.replace("{{file_size}}", file_size_fmt)
+    html = html.replace("{{file_format}}", fmt_label)
+    html = html.replace("{{quality_tag}}", quality_label)
+    html = html.replace("{{download_url}}", dl_url)
+    html = html.replace("{{vlc_url}}", vlc_url)
+    html = html.replace("{{mx_url}}", mx_url)
+    html = html.replace("{{potplayer_url}}", potplayer_url)
+    html = html.replace("{{file_data_json}}", file_data_json)
 
-/* ---------- Hero ---------- */
-.hero{{position:relative;isolation:isolate;padding:28px 16px 0}}
-.hero::before{{
-  content:"";position:absolute;inset:-40px 0 auto;height:420px;z-index:-1;
-  background:
-    radial-gradient(60% 70% at 15% 20%,rgba(45,107,255,.35),transparent 70%),
-    radial-gradient(55% 65% at 85% 10%,rgba(139,92,246,.32),transparent 70%),
-    radial-gradient(50% 60% at 50% 60%,rgba(255,77,141,.18),transparent 70%);
-  filter:blur(10px);
-}}
-.wrap{{max-width:1120px;margin:0 auto}}
+    # Trigger background probe so tracks and HLS are ready early
+    asyncio.create_task(_prewarm_media(f_id, dl_url))
 
-.stage{{
-  position:relative;aspect-ratio:16/9;border-radius:var(--radius);overflow:hidden;
-  background:#05070F;
-  box-shadow:0 30px 60px -28px rgba(45,107,255,.55),0 0 0 1px rgba(14,20,38,.06);
-}}
-video{{width:100%;height:100%;display:block;background:#05070F}}
-
-/* loading skeleton */
-.stage.loading::after{{
-  content:"";position:absolute;inset:0;
-  background:linear-gradient(110deg,#0c1224 30%,#18223d 50%,#0c1224 70%);
-  background-size:220% 100%;animation:shine 1.4s linear infinite;pointer-events:none;
-}}
-.stage.ready::after{{display:none}}
-@keyframes shine{{to{{background-position:-220% 0}}}}
-
-/* ---------- Content grid ---------- */
-.content{{
-  display:grid;gap:18px;padding:22px 16px 60px;
-  grid-template-columns:1fr;
-}}
-@media(min-width:900px){{
-  .content{{grid-template-columns:minmax(0,1fr) 360px;padding:26px 0 70px;gap:24px}}
-}}
-.wrap.grid{{padding:0}}
-
-.info{{padding:4px 2px}}
-h1{{
-  font-size:clamp(20px,2.8vw,30px);font-weight:800;letter-spacing:-.025em;line-height:1.2;
-  overflow-wrap:anywhere;
-}}
-.facts{{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}}
-.fact{{
-  font-size:13px;font-weight:700;padding:6px 12px;border-radius:10px;
-  background:var(--surface);border:1px solid var(--line);color:var(--ink);
-}}
-.fact.quality{{
-  color:#fff;border:0;
-  background:linear-gradient(135deg,var(--pink),var(--violet));
-}}
-.note{{margin-top:16px;font-size:14px;color:var(--muted);max-width:60ch}}
-
-/* ---------- Action panel ---------- */
-.panel{{
-  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
-  padding:20px;box-shadow:0 14px 30px -22px rgba(14,20,38,.25);
-}}
-.panel h2{{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:18px 0 10px}}
-.panel h2:first-child{{margin-top:0}}
-
-.btn{{
-  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
-  padding:15px 16px;border:0;border-radius:14px;cursor:pointer;
-  font-family:inherit;font-size:15px;font-weight:700;line-height:1;text-decoration:none;
-  transition:transform .12s ease,box-shadow .2s ease,background .2s ease;
-}}
-.btn:active{{transform:scale(.97)}}
-.btn-download{{
-  color:#fff;background:var(--green);
-  box-shadow:0 14px 28px -14px var(--green);
-}}
-.btn-download:hover{{box-shadow:0 18px 32px -14px var(--green)}}
-
-.apps{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
-.app{{
-  display:flex;align-items:center;gap:10px;padding:12px;
-  background:var(--canvas);border:1px solid var(--line);border-radius:14px;
-  color:var(--ink);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;
-  transition:border-color .2s,transform .12s;text-align:left;
-}}
-.app:hover{{border-color:var(--blue)}}
-.app:active{{transform:scale(.97)}}
-.app .ico{{
-  width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex:none;
-  color:#fff;font-weight:900;font-size:14px;background:var(--c);
-}}
-.app.highlight{{border-color:var(--pink);box-shadow:0 0 0 4px rgba(255,77,141,.15)}}
-
-.copy{{
-  margin-top:10px;width:100%;padding:13px;border-radius:14px;
-  background:transparent;border:1px dashed #C8D1E6;color:var(--muted);
-  font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;
-}}
-.copy:hover{{color:var(--blue);border-color:var(--blue)}}
-
-.help{{margin-top:14px;font-size:13px;color:var(--muted)}}
-
-/* ---------- Bottom sheet (mobile external players) ---------- */
-.scrim{{
-  position:fixed;inset:0;background:rgba(14,20,38,.35);opacity:0;pointer-events:none;
-  transition:opacity .25s;z-index:40;
-}}
-.sheet{{
-  position:fixed;left:0;right:0;bottom:0;z-index:41;background:var(--surface);
-  border-radius:24px 24px 0 0;padding:14px 20px calc(20px + env(safe-area-inset-bottom,0px));
-  transform:translateY(105%);transition:transform .3s cubic-bezier(.2,.8,.2,1);
-  box-shadow:0 -20px 40px -20px rgba(14,20,38,.35);
-}}
-.sheet .grab{{width:44px;height:5px;border-radius:99px;background:var(--line);margin:0 auto 14px}}
-.sheet h3{{font-size:17px;font-weight:800;margin-bottom:4px}}
-.sheet p{{font-size:14px;color:var(--muted);margin-bottom:14px}}
-.sheet .apps{{grid-template-columns:1fr 1fr 1fr}}
-.sheet .app{{flex-direction:column;text-align:center;padding:14px 8px}}
-.open .scrim{{opacity:1;pointer-events:auto}}
-.open .sheet{{transform:translateY(0)}}
-
-/* ---------- Toast ---------- */
-.toast{{
-  position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));
-  transform:translate(-50%,160px);background:var(--ink);color:#fff;
-  padding:12px 18px;border-radius:14px;font-size:14px;font-weight:600;
-  transition:transform .35s cubic-bezier(.2,.8,.2,1);z-index:60;white-space:nowrap;
-  box-shadow:0 14px 30px -12px rgba(14,20,38,.6);
-}}
-.toast.show{{transform:translate(-50%,0)}}
-</style>
-</head>
-<body>
-
-<header class="top">
-  <div class="brand"><div class="logo">K</div>Kayi Stream</div>
-  <div class="chip" id="chip"></div>
-</header>
-
-<section class="hero">
-  <div class="wrap">
-    <div class="stage loading" id="stage">
-      <video id="player" controls playsinline preload="metadata"></video>
-    </div>
-  </div>
-</section>
-
-<main class="wrap content">
-  <div class="info">
-    <h1 id="title"></h1>
-    <div class="facts">
-      <span class="fact" id="size"></span>
-      <span class="fact" id="format"></span>
-      <span class="fact quality" id="quality"></span>
-    </div>
-    <p class="note" id="note">Playing in your browser. If the video doesn't start, open it in a dedicated player.</p>
-  </div>
-
-  <aside class="panel">
-    <h2>Download</h2>
-    <a class="btn btn-download" id="dl" href="#">Download file</a>
-
-    <h2>Open in</h2>
-    <div class="apps">
-      <button class="app" data-app="vlc"><span class="ico" style="--c:#FF7A00">V</span>VLC</button>
-      <button class="app" data-app="mx"><span class="ico" style="--c:#7C3AED">M</span>MX Player</button>
-      <button class="app" data-app="pot"><span class="ico" style="--c:#F59E0B">P</span>PotPlayer</button>
-      <button class="app" data-app="more"><span class="ico" style="--c:#2D6BFF">+</span>More</button>
-    </div>
-    <button class="copy" id="copy">Copy link</button>
-    <p class="help" id="help">Works best in VLC, MX Player, or PotPlayer for MKV files with multiple audio or subtitle tracks.</p>
-  </aside>
-</main>
-
-<div class="scrim" id="scrim"></div>
-<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
-  <div class="grab"></div>
-  <h3 id="sheetTitle">Open in a player</h3>
-  <p>Choose a player to play this file with full audio and subtitle support.</p>
-  <div class="apps">
-    <button class="app" data-app="vlc"><span class="ico" style="--c:#FF7A00">V</span>VLC</button>
-    <button class="app" data-app="mx"><span class="ico" style="--c:#7C3AED">M</span>MX Player</button>
-    <button class="app" data-app="pot"><span class="ico" style="--c:#F59E0B">P</span>PotPlayer</button>
-  </div>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script>
-/* Injected by the server for each file */
-const F = {file_data_json};
-
-const $ = id => document.getElementById(id);
-const abs = new URL(F.stream, location.href).href;
-const isAndroid = /Android/i.test(navigator.userAgent);
-const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-
-/* Fill the page */
-$("title").textContent = F.name;
-$("size").textContent = F.size;
-$("format").textContent = F.format;
-$("quality").textContent = F.quality;
-$("chip").textContent = "ID " + F.id;
-$("dl").href = F.download;
-document.title = F.name + " · Kayi Stream";
-$("player").src = F.stream;
-
-/* Loading and ready states */
-const player = $("player");
-player.addEventListener("loadeddata", () => $("stage").classList.replace("loading", "ready"));
-
-/* Friendly fallback when the browser can't decode the file */
-player.addEventListener("error", () => {{
-  $("stage").classList.replace("loading", "ready");
-  $("note").textContent = "This file won't play in the browser. Open it in VLC or MX Player below.";
-  document.querySelectorAll('.app[data-app="vlc"], .app[data-app="mx"]').forEach(b => b.classList.add("highlight"));
-  if (isMobile) openSheet();
-}});
-
-/* Toast */
-function toast(msg){{
-  const t = $("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  clearTimeout(t._h);
-  t._h = setTimeout(() => t.classList.remove("show"), 2200);
-}}
-
-/* Bottom sheet */
-function openSheet(){{ document.body.classList.add("open"); }}
-function closeSheet(){{ document.body.classList.remove("open"); }}
-$("scrim").addEventListener("click", closeSheet);
-
-/* External players */
-function intentFor(pkg){{
-  return `intent:${{abs}}#Intent;package=${{pkg}};type=video/*;S.title=${{encodeURIComponent(F.name)}};end`;
-}}
-function copyLink(message = "Link copied"){{
-  navigator.clipboard.writeText(abs).then(() => toast(message)).catch(() => toast("Could not copy link"));
-}}
-function openExternal(app){{
-  if(app === "more"){{ openSheet(); return; }}
-  let target = null;
-  if(app === "vlc") target = isAndroid ? intentFor("org.videolan.vlc") : "vlc://" + abs;
-  if(app === "pot") target = "potplayer://" + abs;
-  if(app === "mx" && isAndroid) target = intentFor("com.mxtech.videoplayer.ad");
-
-  if(!target){{
-    closeSheet();
-    copyLink("Paste this link into your player");
-    return;
-  }}
-  closeSheet();
-  location.href = target;
-}}
-
-document.querySelectorAll("[data-app]").forEach(b =>
-  b.addEventListener("click", () => openExternal(b.dataset.app))
-);
-$("copy").addEventListener("click", () => copyLink());
-</script>
-</body>
-</html>"""
     return web.Response(text=html, content_type="text/html")
+
+async def _prewarm_media(file_id: int, stream_url: str):
+    try:
+        # Use localhost URL for fast local probing
+        local_url = f"http://127.0.0.1:{PORT}/dl/{file_id}"
+        t_data = await tracks.probe_file(file_id, local_url)
+        if t_data.get("mode") == "hls":
+            await tracks.ensure_hls_generation(file_id, local_url, t_data)
+        # Background extract first supported subtitle track if available
+        for s in t_data.get("subtitles", []):
+            if s.get("supported"):
+                asyncio.create_task(tracks.extract_subtitle(file_id, local_url, s["index"]))
+                break
+    except Exception as e:
+        print(f"[prewarm] Error prewarming file {file_id}: {e}")
+
+async def handle_get_tracks(request: web.Request) -> web.Response:
+    identifier = request.match_info.get("identifier")
+    record = await db.get_file_by_id_or_token(identifier)
+    if not record:
+        return web.json_response({"error": "File not found"}, status=404)
+
+    f_id = record["id"]
+    local_url = f"http://127.0.0.1:{PORT}/dl/{f_id}"
+
+    t_data = await tracks.probe_file(f_id, local_url)
+
+    # If HLS mode is needed, ensure background HLS generator is started
+    if t_data.get("mode") == "hls":
+        asyncio.create_task(tracks.ensure_hls_generation(f_id, local_url, t_data))
+
+    return web.json_response(t_data)
+
+async def handle_get_subtitle(request: web.Request) -> web.Response:
+    identifier = request.match_info.get("identifier")
+    index_str = request.match_info.get("index")
+    try:
+        stream_index = int(index_str)
+    except Exception:
+        return web.Response(text="Invalid stream index", status=400)
+
+    record = await db.get_file_by_id_or_token(identifier)
+    if not record:
+        return web.Response(text="File not found", status=404)
+
+    f_id = record["id"]
+    local_url = f"http://127.0.0.1:{PORT}/dl/{f_id}"
+
+    vtt_path = await tracks.extract_subtitle(f_id, local_url, stream_index)
+    if not vtt_path or not os.path.exists(vtt_path):
+        return web.Response(text="WEBVTT\n\n", content_type="text/vtt", charset="utf-8")
+
+    try:
+        with open(vtt_path, "r", encoding="utf-8", errors="ignore") as f:
+            vtt_content = f.read()
+        return web.Response(text=vtt_content, content_type="text/vtt", charset="utf-8")
+    except Exception as e:
+        return web.Response(text="WEBVTT\n\n", content_type="text/vtt", charset="utf-8")
+
+async def handle_hls_file(request: web.Request) -> web.Response:
+    identifier = request.match_info.get("identifier")
+    filename = request.match_info.get("filename")
+
+    record = await db.get_file_by_id_or_token(identifier)
+    if not record:
+        return web.Response(text="File not found", status=404)
+
+    f_id = record["id"]
+    file_path = os.path.join(tracks.CACHE_BASE_DIR, str(f_id), "hls", filename)
+
+    # If master.m3u8 or stream playlist is not yet written, wait up to 15 seconds
+    if filename.endswith(".m3u8") and not os.path.exists(file_path):
+        local_url = f"http://127.0.0.1:{PORT}/dl/{f_id}"
+        t_data = await tracks.probe_file(f_id, local_url)
+        await tracks.ensure_hls_generation(f_id, local_url, t_data)
+        for _ in range(30):
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                break
+            await asyncio.sleep(0.5)
+
+    if not os.path.exists(file_path):
+        if filename == "master.m3u8":
+            fallback_var = os.path.join(tracks.CACHE_BASE_DIR, str(f_id), "hls", "stream_0.m3u8")
+            if os.path.exists(fallback_var) and os.path.getsize(fallback_var) > 0:
+                synth = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=2500000\nstream_0.m3u8\n"
+                return web.Response(text=synth, content_type="application/vnd.apple.mpegurl", headers={"Access-Control-Allow-Origin": "*"})
+        return web.Response(text="Segment not ready", status=404)
+
+    if filename.endswith(".m3u8"):
+        c_type = "application/vnd.apple.mpegurl"
+    elif filename.endswith(".ts"):
+        c_type = "video/MP2T"
+    else:
+        c_type = "application/octet-stream"
+
+    return web.FileResponse(file_path, headers={"Content-Type": c_type, "Access-Control-Allow-Origin": "*"})
 
 async def handle_stream(request: web.Request) -> web.StreamResponse:
     return await handle_media_transfer(request, is_download=False)
@@ -574,7 +405,10 @@ async def handle_media_transfer(request: web.Request, is_download: bool) -> web.
                 if not chunk:
                     break
 
-                await response.write(chunk)
+                try:
+                    await response.write(chunk)
+                except (ConnectionResetError, aiohttp.ClientConnectionError, asyncio.CancelledError):
+                    break
                 bytes_to_send -= len(chunk)
                 if bytes_to_send <= 0:
                     break
@@ -660,6 +494,16 @@ async def start_server():
     app.router.add_get("/", handle_root)
     app.router.add_get("/health", handle_health)
     
+    # Static files route for player.css and player.js
+    app.router.add_static("/static", path=STATIC_DIR, name="static")
+
+    # API endpoints for tracks & subtitles
+    app.router.add_get("/api/media/{identifier}/tracks", handle_get_tracks)
+    app.router.add_get("/api/media/{identifier}/subs/{index}.vtt", handle_get_subtitle)
+
+    # HLS streaming endpoints
+    app.router.add_get("/hls/{identifier}/{filename}", handle_hls_file)
+
     # Dual support for /watch, /stream, /dl by numerical ID or token
     app.router.add_get("/watch/{identifier}", handle_watch)
     app.router.add_get("/stream/{identifier}", handle_stream)
