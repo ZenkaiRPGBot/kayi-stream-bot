@@ -21,6 +21,18 @@ from server import start_server, format_file_size, get_media_category
 dp = Dispatcher()
 HTTP_SESSION: aiohttp.ClientSession | None = None
 
+def is_valid_tg_button_url(url: str) -> bool:
+    if not url:
+        return False
+    u = url.lower()
+    if u.startswith("tg://"):
+        return True
+    if u.startswith("http://") or u.startswith("https://"):
+        if "localhost" in u or "127.0.0.1" in u:
+            return False
+        return True
+    return False
+
 def get_uptime_string() -> str:
     delta = datetime.now(timezone.utc) - BOT_START_TIME
     days = delta.days
@@ -39,20 +51,13 @@ def get_system_load() -> dict:
         mem_info = proc.memory_info()
         rss_mb = mem_info.rss / (1024 * 1024)
         cpu_pct = proc.cpu_percent(interval=None)
-        sys_mem = psutil.virtual_memory()
         return {
             "proc_mem_mb": rss_mb,
             "cpu_pct": cpu_pct,
-            "sys_mem_used_pct": sys_mem.percent,
             "status": "Optimal 🟢" if rss_mb < 250 else "High 🟡"
         }
     except Exception:
-        return {
-            "proc_mem_mb": 0.0,
-            "cpu_pct": 0.0,
-            "sys_mem_used_pct": 0.0,
-            "status": "Normal 🟢"
-        }
+        return {"proc_mem_mb": 0.0, "cpu_pct": 0.0, "status": "Normal 🟢"}
 
 def format_time_remaining(expires_at_iso: str) -> str:
     try:
@@ -69,6 +74,26 @@ def format_time_remaining(expires_at_iso: str) -> str:
     except Exception:
         return "Active"
 
+async def send_rich_msg(chat_id: int | str, markdown: str, reply_markup: dict | None = None) -> bool:
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendRichMessage"
+    payload = {
+        "chat_id": chat_id,
+        "rich_message": {"markdown": markdown}
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    try:
+        if HTTP_SESSION:
+            async with HTTP_SESSION.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                data = await resp.json()
+                if data.get("ok"):
+                    return True
+                print(f"[rich_msg] Error: {data}")
+    except Exception as e:
+        print(f"[rich_msg] Exception: {e}")
+    return False
+
 def build_rich_restart_markdown() -> str:
     return f"""# {BRAND_NAME} Online
 
@@ -77,116 +102,109 @@ def build_rich_restart_markdown() -> str:
 | Bot Status | Online 🟢 |
 | Stream Engine | 128KB Chunked 🟢 |
 | Web Player | Plyr Cinema UI 🟢 |
-| File ID System | Active 🟢 |
+| Rich Messages | Telegram 10.1+ 🟢 |
 | Ecosystem | {CHANNEL_USERNAME} 🟢 |
 
-### What's New
-- Incremental File IDs (#1, #2, etc.) for instant lookup
-- /files command: Live bot storage load & active files explorer
-- /info <id> command: In-depth technical metadata inspector
-- 1-Tap VLC Player and MX Player intent launchers
+### System Highlights
+- High-speed direct browser downloads with RFC 7233 byte-range seeking
+- Executive glassmorphic Web Player with Plyr.js, PiP, and speed controls
+- Real-time catalog with incremental File IDs (#1, #2, etc.)
+- /files and /info commands for live bot load and technical metadata
 - Zero-disk RAM-optimized chunked streaming
 
 *Ready to stream media.*"""
 
 async def send_rich_restart_notification(bot: Bot):
     rich_md = build_rich_restart_markdown()
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendRichMessage"
-
     if OWNER_ID:
-        try:
-            payload = {"chat_id": OWNER_ID, "rich_message": {"markdown": rich_md}}
-            if HTTP_SESSION:
-                async with HTTP_SESSION.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                    data = await resp.json()
-                    if data.get("ok"):
-                        print(f"[restart] Restart notification sent to owner ({OWNER_ID})")
-        except Exception as e:
-            print(f"[restart] Notice: Could not send restart notification to owner: {e}")
-
+        await send_rich_msg(OWNER_ID, rich_md)
     if LOG_CHANNEL_ID:
-        try:
-            payload = {"chat_id": LOG_CHANNEL_ID, "rich_message": {"markdown": rich_md}}
-            if HTTP_SESSION:
-                async with HTTP_SESSION.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                    print(f"[log_channel] Restart log sent to channel: {LOG_CHANNEL_ID}")
-        except Exception as e:
-            print(f"[log_channel] Notice: Could not send log to channel: {e}")
+        await send_rich_msg(LOG_CHANNEL_ID, rich_md)
 
-async def log_stream_generation(bot: Bot, user: types.User, file_id_num: int, file_name: str, file_size: str, dl_url: str):
+async def log_stream_generation(user: types.User, file_id_num: int, file_name: str, file_size: str, dl_url: str):
     if not LOG_CHANNEL_ID:
         return
-    text = (
-        f"⚡ <b>New Link Generated ({BRAND_NAME})</b>\n\n"
-        f"• <b>ID:</b> <code>#{file_id_num}</code>\n"
-        f"• <b>User:</b> {user.full_name} (<code>{user.id}</code>)\n"
-        f"• <b>File:</b> <code>{file_name}</code>\n"
-        f"• <b>Size:</b> <code>{file_size}</code>\n"
-        f"• <b>Link:</b> {dl_url}"
-    )
-    try:
-        await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode=ParseMode.HTML)
-    except Exception as e:
-        print(f"[log] Error logging to channel: {e}")
+    md = f"""# ⚡ Link Generated
+
+| Property | Value |
+| :--- | :--- |
+| **File ID** | `#{file_id_num}` |
+| **User** | `{user.full_name}` (`{user.id}`) |
+| **File** | `{file_name}` |
+| **Size** | `{file_size}` |
+
+[Direct Download]({dl_url})"""
+    await send_rich_msg(LOG_CHANNEL_ID, md)
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        types.InlineKeyboardButton(text="📁 View Active Files", callback_data="show_files_1"),
-        types.InlineKeyboardButton(text="📖 Streaming Guide", callback_data="help_guide")
-    )
-    channel_url = f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"
-    builder.row(types.InlineKeyboardButton(text=f"📢 Join {CHANNEL_USERNAME}", url=channel_url))
+    md = f"""# 🦅 {BRAND_NAME}
 
-    welcome_text = (
-        f"<b>🦅 Welcome to {BRAND_NAME}!</b>\n\n"
-        "⚡ <b>Ultra-Fast File to Direct Link & Video Stream Generator</b>\n\n"
-        "<b>What I do:</b>\n"
-        "• <b>Instant Links:</b> Send any file ➔ Get high-speed download & streaming links.\n"
-        "• <b>Web Player:</b> Stream videos in HD with Plyr.js, speed adjustment & subtitles.\n"
-        "• <b>External Players:</b> 1-tap playback in <b>VLC</b>, <b>MX Player</b>, or <b>Smart TVs</b>.\n"
-        "• <b>File ID Registry:</b> Every file is cataloged with an ID for easy tracking (/files & /info).\n\n"
-        "👇 <b>Send or forward any Video, Audio, or Document here to get started!</b>"
-    )
-    await message.reply(welcome_text, parse_mode=ParseMode.HTML, reply_markup=builder.as_markup())
+| Capability | Details |
+| :--- | :--- |
+| **Direct Download** | Full-speed download links (IDM & ADM compatible) |
+| **Web Player** | Stream HD video online with subtitle & speed control |
+| **App Stream** | 1-Tap playback in VLC, MX Player, and Smart TVs |
+| **File ID Catalog** | Every file is indexed with an ID for easy tracking |
+
+### Getting Started
+Send or forward any **Video, Audio, or Document** to this chat to generate your link instantly."""
+
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "📁 View Active Files", "callback_data": "show_files_1"},
+                {"text": "📖 Streaming Guide", "callback_data": "help_guide"}
+            ],
+            [
+                {"text": f"📢 Join {CHANNEL_USERNAME}", "url": f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"}
+            ]
+        ]
+    }
+    sent = await send_rich_msg(message.chat.id, md, reply_markup=keyboard)
+    if not sent:
+        await message.reply(md, parse_mode=ParseMode.MARKDOWN)
 
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
-    help_text = (
-        f"<b>📖 {BRAND_NAME} — Command & Streaming Guide</b>\n\n"
-        "<b>📂 File Management Commands:</b>\n"
-        "• /files [page] — View current active files, bot memory & system load\n"
-        "• /info &lt;id&gt; — Get comprehensive technical details for a specific file ID\n"
-        "• /myfiles — Quick list of your personal generated links\n"
-        "• /stats — Global platform statistics\n"
-        "• /ping — Check latency & server uptime\n\n"
-        "<b>📺 Streaming Tips:</b>\n"
-        "• <b>Web:</b> Tap <b>📺 Web Player</b> to play directly in browser.\n"
-        "• <b>VLC / MX:</b> Tap the dedicated buttons to launch VLC or MX Player with 1 tap!\n"
-        "• <b>IDM / ADM:</b> Paste the <b>🚀 Direct Download Link</b> into download managers for multi-threaded speed."
-    )
-    builder = InlineKeyboardBuilder()
-    builder.row(types.InlineKeyboardButton(text="📁 View Files & Load", callback_data="show_files_1"))
-    await message.reply(help_text, parse_mode=ParseMode.HTML, reply_markup=builder.as_markup())
+    md = f"""# 📖 {BRAND_NAME} — Streaming Guide
+
+| Platform | Recommended App | Playback Method |
+| :--- | :--- | :--- |
+| **Browser** | Chrome / Safari | Open **Web Player** for instant playback |
+| **Android** | MX Player / VLC | Paste Direct Link or launch via Web Player |
+| **PC / Mac** | VLC / PotPlayer | Media ➔ Open Network Stream ➔ Paste Link |
+| **Smart TV** | Kodi / VLC for TV | Enter Direct Link in Network Stream |
+
+### Commands
+- `/files [page]` — Active files catalog and real-time system load
+- `/info <id>` — Detailed technical metadata for any file ID
+- `/myfiles` — Quick list of your generated links
+- `/stats` — Platform streaming metrics and bandwidth
+- `/ping` — Real-time latency and uptime diagnostics"""
+
+    keyboard = {
+        "inline_keyboard": [
+            [{"text": "📁 View Files & Load", "callback_data": "show_files_1"}]
+        ]
+    }
+    await send_rich_msg(message.chat.id, md, reply_markup=keyboard)
 
 @dp.message(Command("files"))
 @dp.message(Command("loads"))
 async def cmd_files(message: types.Message):
-    # Parse optional page number e.g. /files 2
     page = 1
     parts = message.text.split()
     if len(parts) > 1 and parts[1].isdigit():
         page = max(1, int(parts[1]))
 
     user_id = message.from_user.id
-    # Owner sees all files across the bot; regular users see their files
     filter_user = None if user_id == OWNER_ID else user_id
-    text, markup = await build_files_page(filter_user, page=page, is_owner=(user_id == OWNER_ID))
-    await message.reply(text, parse_mode=ParseMode.HTML, reply_markup=markup, link_preview_options=types.LinkPreviewOptions(is_disabled=True))
+    md, markup = await build_files_markdown(filter_user, page=page, is_owner=(user_id == OWNER_ID))
+    await send_rich_msg(message.chat.id, md, reply_markup=markup)
 
-async def build_files_page(filter_user: int | None, page: int = 1, is_owner: bool = False) -> tuple[str, types.InlineKeyboardMarkup]:
-    page_size = 6
+async def build_files_markdown(filter_user: int | None, page: int = 1, is_owner: bool = False) -> tuple[str, dict]:
+    page_size = 5
     files, total = await db.get_active_files(user_id=filter_user, page=page, page_size=page_size)
     total_pages = max(1, (total + page_size - 1) // page_size)
     page = min(page, total_pages)
@@ -195,76 +213,86 @@ async def build_files_page(filter_user: int | None, page: int = 1, is_owner: boo
     stats = await db.get_global_stats()
     active_mb = stats["active_bytes"] / (1024 * 1024)
 
-    header = "<b>🦅 Current Files & System Load</b>\n" if is_owner else "<b>📁 Your Active Files & Bot Load</b>\n"
-    meta_section = (
-        f"{header}"
-        f"• <b>Active Files:</b> <code>{total}</code> | <b>Volume:</b> <code>{active_mb:.1f} MB</code>\n"
-        f"• <b>RAM Load:</b> <code>{load['proc_mem_mb']:.1f} MB</code> ({load['status']}) | <b>CPU:</b> <code>{load['cpu_pct']}%</code>\n"
-        f"• <b>Total Downloads:</b> <code>{stats['total_downloads']}</code>\n"
-        f"────────────────────\n"
-    )
+    title = "🦅 Current Files & System Load" if is_owner else "📁 Your Active Files & Load"
+
+    meta_table = f"""# {title}
+
+| Metric | Status |
+| :--- | :---: |
+| **Active Files** | `{total}` |
+| **Storage Volume** | `{active_mb:.1f} MB` |
+| **RAM Load** | `{load['proc_mem_mb']:.1f} MB` ({load['status']}) |
+| **Total Downloads** | `{stats['total_downloads']}` |
+"""
 
     if not files:
-        body = "<i>No active files found. Send a file to register ID #1!</i>\n"
+        catalog_section = "\n*No active files found. Send a file to register ID #1!*"
     else:
-        body = ""
+        catalog_section = "\n### 📁 Active Catalog\n| ID | File Name | Size | Time Left |\n| :---: | :--- | :---: | :---: |\n"
         for f in files:
             f_id = f["id"]
             name = f["file_name"]
+            # Shorten name if too long for table
+            if len(name) > 22:
+                name = name[:19] + "..."
             size_fmt = format_file_size(f["file_size"])
             time_left = format_time_remaining(f["expires_at"])
-            dls = f["download_count"]
-            body += f"<b>[#{f_id}]</b> <code>{name}</code>\n• Size: <code>{size_fmt}</code> | 👁️ {dls} | ⏳ {time_left}\n"
+            catalog_section += f"| `#{f_id}` | `{name}` | `{size_fmt}` | `{time_left}` |\n"
 
-    footer = f"\n📄 <i>Page {page} of {total_pages} • Use /info &lt;id&gt; for full details</i>"
+    footer = f"\n*Page {page} of {total_pages} • Type /info <id> for link details*"
 
-    builder = InlineKeyboardBuilder()
-    # Add quick info buttons for the current files
+    btn_row_info = []
     if files:
-        btn_row = []
         for f in files[:4]:
-            btn_row.append(types.InlineKeyboardButton(text=f"ℹ️ #{f['id']}", callback_data=f"info_file_{f['id']}"))
-        builder.row(*btn_row)
+            btn_row_info.append({"text": f"ℹ️ #{f['id']}", "callback_data": f"info_file_{f['id']}"})
 
-    # Navigation buttons
     nav_row = []
     if page > 1:
-        nav_row.append(types.InlineKeyboardButton(text="⬅️ Prev", callback_data=f"show_files_{page - 1}"))
-    nav_row.append(types.InlineKeyboardButton(text=f"📄 {page}/{total_pages}", callback_data="noop"))
+        nav_row.append({"text": "⬅️ Prev", "callback_data": f"show_files_{page - 1}"})
+    nav_row.append({"text": f"📄 {page}/{total_pages}", "callback_data": "noop"})
     if page < total_pages:
-        nav_row.append(types.InlineKeyboardButton(text="Next ➡️", callback_data=f"show_files_{page + 1}"))
-    if nav_row:
-        builder.row(*nav_row)
+        nav_row.append({"text": "Next ➡️", "callback_data": f"show_files_{page + 1}"})
 
-    return (meta_section + body + footer, builder.as_markup())
+    inline_keyboard = []
+    if btn_row_info:
+        inline_keyboard.append(btn_row_info)
+    if nav_row:
+        inline_keyboard.append(nav_row)
+
+    return (meta_table + catalog_section + footer, {"inline_keyboard": inline_keyboard})
 
 @dp.message(Command("info"))
 @dp.message(Command("file"))
 async def cmd_info(message: types.Message):
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply(
-            "<b>❓ Usage:</b> <code>/info &lt;id&gt;</code>\n\n"
-            "<b>Examples:</b>\n"
-            "• <code>/info 1</code>\n"
-            "• <code>/info #1</code>\n"
-            "• <code>/info &lt;token&gt;</code>\n\n"
-            "<i>Use /files to list all active file IDs.</i>",
-            parse_mode=ParseMode.HTML
-        )
+        md = """# ❓ Command Usage
+
+| Command | Action |
+| :--- | :--- |
+| `/info 1` | Inspect file by ID `#1` |
+| `/info #1` | Inspect with hash symbol |
+| `/info <token>` | Lookup by token string |
+
+*Type /files to view all active file IDs.*"""
+        await send_rich_msg(message.chat.id, md)
         return
 
     query_id = parts[1].strip()
-    await send_file_info_card(message, query_id)
+    await send_file_info_card(message.chat.id, query_id)
 
-async def send_file_info_card(target_message: types.Message, query_id: str, edit: bool = False):
+async def send_file_info_card(chat_id: int | str, query_id: str):
     record = await db.get_file_by_id_or_token(query_id)
     if not record:
-        err_text = f"❌ <b>File Not Found:</b> No active record matching ID <code>{query_id}</code>.\n\n<i>It may have expired or been revoked. Check /files for active items.</i>"
-        if edit:
-            await target_message.edit_text(err_text, parse_mode=ParseMode.HTML)
-        else:
-            await target_message.reply(err_text, parse_mode=ParseMode.HTML)
+        md = f"""# ❌ File Not Found
+
+| Property | Value |
+| :--- | :--- |
+| **Query ID** | `{query_id}` |
+| **Status** | Expired or Revoked |
+
+*Check /files to view all current active files.*"""
+        await send_rich_msg(chat_id, md)
         return
 
     f_id = record["id"]
@@ -281,69 +309,69 @@ async def send_file_info_card(target_message: types.Message, query_id: str, edit
 
     dl_url = f"{SERVER_URL}/dl/{token}"
     watch_url = f"{SERVER_URL}/watch/{token}"
-    vlc_url = f"vlc://{dl_url.replace('https://', '').replace('http://', '')}"
-    mx_url = f"intent:{dl_url}#Intent;package=com.mxtech.videoplayer.ad;type=video/*;end"
 
-    card = (
-        f"<b>📋 File Record — ID #{f_id}</b>\n\n"
-        f"📁 <b>Name:</b> <code>{file_name}</code>\n"
-        f"📦 <b>Size:</b> <code>{size_formatted}</code> (<code>{file_size:,} bytes</code>)\n"
-        f"🎭 <b>Type:</b> <code>{category.upper()}</code> (<code>{mime_type}</code>)\n"
-        f"👤 <b>Uploader ID:</b> <code>{uploader_id}</code>\n"
-        f"📅 <b>Created:</b> <code>{created_str} UTC</code>\n"
-        f"⏳ <b>Status:</b> <code>{time_left}</code>\n"
-        f"👁️ <b>Downloads & Streams:</b> <code>{dls} times</code>\n\n"
-        f"<b>🚀 Direct Download Link:</b>\n"
-        f"<code>{dl_url}</code>\n\n"
-        f"<b>📺 Stream / Player URL:</b>\n"
-        f"<code>{watch_url}</code>"
-    )
+    md = f"""# 📋 File Details — #{f_id}
 
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        types.InlineKeyboardButton(text="📺 Web Player", url=watch_url),
-        types.InlineKeyboardButton(text="🚀 Fast Download", url=dl_url)
-    )
-    if category == "video":
-        builder.row(
-            types.InlineKeyboardButton(text="⚡ VLC Player", url=vlc_url),
-            types.InlineKeyboardButton(text="📱 MX Player", url=mx_url)
-        )
-    builder.row(
-        types.InlineKeyboardButton(text="🗑️ Delete File", callback_data=f"revoke_id_{f_id}"),
-        types.InlineKeyboardButton(text="📁 All Files", callback_data="show_files_1")
-    )
+| Attribute | Value |
+| :--- | :--- |
+| **File Name** | `{file_name}` |
+| **Size** | `{size_formatted}` (`{file_size:,} bytes`) |
+| **Media Type** | `{category.upper()}` (`{mime_type}`) |
+| **Uploader** | `{uploader_id}` |
+| **Uploaded At** | `{created_str} UTC` |
+| **Status** | `{time_left}` |
+| **Downloads** | `{dls} times` |
 
-    if edit:
-        await target_message.edit_text(card, parse_mode=ParseMode.HTML, reply_markup=builder.as_markup(), link_preview_options=types.LinkPreviewOptions(is_disabled=True))
-    else:
-        await target_message.reply(card, parse_mode=ParseMode.HTML, reply_markup=builder.as_markup(), link_preview_options=types.LinkPreviewOptions(is_disabled=True))
+### 🔗 Streaming & Download
+- **Web Player:** `{watch_url}`
+- **Direct Link:** `{dl_url}`"""
+
+    keyboard_rows = []
+    # Only add URL buttons if SERVER_URL is a valid public URL (not localhost)
+    if is_valid_tg_button_url(watch_url) and is_valid_tg_button_url(dl_url):
+        keyboard_rows.append([
+            {"text": "📺 Web Player", "url": watch_url},
+            {"text": "🚀 Fast Download", "url": dl_url}
+        ])
+
+    keyboard_rows.append([
+        {"text": "🗑️ Delete File", "callback_data": f"revoke_id_{f_id}"},
+        {"text": "📁 All Files", "callback_data": "show_files_1"}
+    ])
+
+    await send_rich_msg(chat_id, md, reply_markup={"inline_keyboard": keyboard_rows})
 
 @dp.message(Command("myfiles"))
 async def cmd_myfiles(message: types.Message):
     user_id = message.from_user.id
     files = await db.get_user_files(user_id, limit=5)
     if not files:
-        await message.reply("📁 <b>You have no active streaming links.</b>\n\nSend any video or file to generate your first link!", parse_mode=ParseMode.HTML)
+        md = """# 📁 My Active Files
+
+*You have no active streaming links right now.*
+Send any video or file to generate your first link!"""
+        await send_rich_msg(message.chat.id, md)
         return
 
-    text = f"<b>📁 Your Active Links ({len(files)} Recent):</b>\n\n"
-    builder = InlineKeyboardBuilder()
+    md = f"# 📁 Your Active Links ({len(files)} Recent)\n\n"
+    md += "| ID | Name | Size | Views |\n| :---: | :--- | :---: | :---: |\n"
+    keyboard_rows = []
 
-    for idx, f in enumerate(files, 1):
-        token = f["token"]
+    for f in files:
         f_id = f["id"]
         name = f["file_name"]
+        if len(name) > 20:
+            name = name[:17] + "..."
         size_str = format_file_size(f["file_size"])
         dls = f["download_count"]
-        watch_url = f"{SERVER_URL}/watch/{token}"
-        text += f"<b>#{f_id} • {name}</b>\n• Size: <code>{size_str}</code> | 👁️ {dls}\n• Stream: {watch_url}\n\n"
-        builder.row(
-            types.InlineKeyboardButton(text=f"ℹ️ Info #{f_id}", callback_data=f"info_file_{f_id}"),
-            types.InlineKeyboardButton(text=f"🗑️ Revoke", callback_data=f"revoke_id_{f_id}")
-        )
+        md += f"| `#{f_id}` | `{name}` | `{size_str}` | `{dls}` |\n"
+        keyboard_rows.append([
+            {"text": f"ℹ️ Details #{f_id}", "callback_data": f"info_file_{f_id}"},
+            {"text": f"🗑️ Revoke", "callback_data": f"revoke_id_{f_id}"}
+        ])
 
-    await message.reply(text, parse_mode=ParseMode.HTML, reply_markup=builder.as_markup(), link_preview_options=types.LinkPreviewOptions(is_disabled=True))
+    md += "\n*Tap Details to get direct streaming and player links.*"
+    await send_rich_msg(message.chat.id, md, reply_markup={"inline_keyboard": keyboard_rows})
 
 @dp.message(Command("stats"))
 async def cmd_stats(message: types.Message):
@@ -353,18 +381,20 @@ async def cmd_stats(message: types.Message):
     total_gb = stats["total_bytes"] / (1024**3)
     active_mb = stats["active_bytes"] / (1024**2)
 
-    text = (
-        f"<b>📊 {BRAND_NAME} — Platform Statistics</b>\n\n"
-        f"• <b>Active Links:</b> <code>{stats['active_links']}</code> (<code>{active_mb:.1f} MB</code>)\n"
-        f"• <b>Total Files Hosted:</b> <code>{stats['total_files']}</code>\n"
-        f"• <b>Total Downloads & Streams:</b> <code>{stats['total_downloads']}</code>\n"
-        f"• <b>Cumulative Data:</b> <code>{total_gb:.2f} GB</code>\n"
-        f"• <b>Process RAM:</b> <code>{load['proc_mem_mb']:.1f} MB</code>\n"
-        f"• <b>CPU Utilization:</b> <code>{load['cpu_pct']}%</code>\n"
-        f"• <b>Bot Uptime:</b> <code>{uptime}</code>\n"
-        f"• <b>Engine Status:</b> <code>Online 🟢</code>"
-    )
-    await message.reply(text, parse_mode=ParseMode.HTML)
+    md = f"""# 📊 {BRAND_NAME} Statistics
+
+| Metric | Value |
+| :--- | :---: |
+| **Active Links** | `{stats['active_links']}` (`{active_mb:.1f} MB`) |
+| **Total Files** | `{stats['total_files']}` |
+| **Total Downloads** | `{stats['total_downloads']}` |
+| **Cumulative Data** | `{total_gb:.2f} GB` |
+| **Process RAM** | `{load['proc_mem_mb']:.1f} MB` |
+| **CPU Load** | `{load['cpu_pct']}%` |
+| **Uptime** | `{uptime}` |
+| **System Status** | `Healthy 🟢` |"""
+
+    await send_rich_msg(message.chat.id, md)
 
 @dp.message(Command("ping"))
 async def cmd_ping(message: types.Message, bot: Bot):
@@ -372,13 +402,14 @@ async def cmd_ping(message: types.Message, bot: Bot):
     await bot.get_me()
     latency = (time.perf_counter() - t0) * 1000
     uptime = get_uptime_string()
-    response = (
-        f"<b>{BRAND_NAME} — Pong!</b>\n\n"
-        f"• <b>Speed:</b> <code>{latency:.1f} ms</code>\n"
-        f"• <b>Uptime:</b> <code>{uptime}</code>\n"
-        f"• <b>Status:</b> <code>Healthy 🟢</code>"
-    )
-    await message.reply(response, parse_mode=ParseMode.HTML)
+    md = f"""# 🦅 {BRAND_NAME} Pong
+
+| Metric | Status |
+| :--- | :---: |
+| **Latency** | `{latency:.1f} ms` |
+| **Uptime** | `{uptime}` |
+| **Health** | `Healthy 🟢` |"""
+    await send_rich_msg(message.chat.id, md)
 
 @dp.message(Command("restart"))
 async def cmd_restart(message: types.Message, bot: Bot):
@@ -396,15 +427,16 @@ async def callback_show_files(query: types.CallbackQuery):
     page = int(query.data.split("_")[2])
     user_id = query.from_user.id
     filter_user = None if user_id == OWNER_ID else user_id
-    text, markup = await build_files_page(filter_user, page=page, is_owner=(user_id == OWNER_ID))
-    await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=markup, link_preview_options=types.LinkPreviewOptions(is_disabled=True))
+    md, markup = await build_files_markdown(filter_user, page=page, is_owner=(user_id == OWNER_ID))
+    await query.message.delete()
+    await send_rich_msg(query.message.chat.id, md, reply_markup=markup)
     await query.answer()
 
 @dp.callback_query(F.data.startswith("info_file_"))
 async def callback_info_file(query: types.CallbackQuery):
     file_id = query.data.split("_")[2]
     await query.answer()
-    await send_file_info_card(query.message, file_id, edit=True)
+    await send_file_info_card(query.message.chat.id, file_id)
 
 @dp.callback_query(F.data.startswith("revoke_id_"))
 async def callback_revoke_id(query: types.CallbackQuery):
@@ -412,21 +444,18 @@ async def callback_revoke_id(query: types.CallbackQuery):
     user_id = query.from_user.id
     deleted = await db.delete_file_by_id_or_token(f_id, user_id=None if user_id == OWNER_ID else user_id)
     if deleted:
-        await query.answer(f"File #{f_id} permanently revoked! 🗑️", show_alert=True)
-        await query.message.edit_text(f"<b>🗑️ File #{f_id} has been permanently deleted and revoked.</b>", parse_mode=ParseMode.HTML)
+        await query.answer(f"File #{f_id} revoked! 🗑️", show_alert=True)
+        md = f"""# 🗑️ Link Revoked
+
+| Item | Status |
+| :--- | :--- |
+| **File ID** | `#{f_id}` |
+| **Action** | Permanently Deleted |
+
+*This stream link is now dead.*"""
+        await send_rich_msg(query.message.chat.id, md)
     else:
         await query.answer("Could not revoke. File may have already expired.", show_alert=True)
-
-@dp.callback_query(F.data.startswith("revoke_"))
-async def callback_revoke(query: types.CallbackQuery):
-    token = query.data.split("_")[1]
-    user_id = query.from_user.id
-    deleted = await db.delete_file_record(token, user_id=None if user_id == OWNER_ID else user_id)
-    if deleted:
-        await query.answer("Link revoked and deleted! 🗑️", show_alert=True)
-        await query.message.edit_text("<b>🗑️ Link has been permanently deleted and revoked.</b>", parse_mode=ParseMode.HTML)
-    else:
-        await query.answer("Could not revoke. Link may have already expired.", show_alert=True)
 
 @dp.callback_query(F.data == "help_guide")
 async def callback_help(query: types.CallbackQuery):
@@ -438,7 +467,7 @@ async def callback_noop(query: types.CallbackQuery):
     await query.answer()
 
 @dp.message(F.video | F.document | F.audio | F.voice | F.animation)
-async def handle_media_file(message: types.Message, bot: Bot):
+async def handle_media_file(message: types.Message):
     user_id = message.from_user.id
 
     # Anti-abuse rate limit
@@ -467,7 +496,6 @@ async def handle_media_file(message: types.Message, bot: Bot):
         else:
             file_name = f"file_{file_unique_id[:8]}.bin"
 
-    # Category icon
     category = get_media_category(mime_type, file_name)
     icon_map = {
         "video": "🎬 Video",
@@ -494,49 +522,53 @@ async def handle_media_file(message: types.Message, bot: Bot):
     size_formatted = format_file_size(file_size)
     dl_url = f"{SERVER_URL}/dl/{token}"
     watch_url = f"{SERVER_URL}/watch/{token}"
-    vlc_url = f"vlc://{dl_url.replace('https://', '').replace('http://', '')}"
-    mx_url = f"intent:{dl_url}#Intent;package=com.mxtech.videoplayer.ad;type=video/*;end"
 
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        types.InlineKeyboardButton(text="📺 Web Player", url=watch_url),
-        types.InlineKeyboardButton(text="🚀 Fast Download", url=dl_url)
-    )
-    if category == "video":
-        builder.row(
-            types.InlineKeyboardButton(text="⚡ Open in VLC", url=vlc_url),
-            types.InlineKeyboardButton(text="📱 Open in MX", url=mx_url)
+    md = f"""# 🦅 Link Ready — #{file_db_id}
+
+| Property | Details |
+| :--- | :--- |
+| **File ID** | `#{file_db_id}` |
+| **File Name** | `{file_name}` |
+| **Size** | `{size_formatted}` |
+| **Format** | `{cat_label}` |
+| **Validity** | `{LINK_EXPIRY_HOURS} Hours` |
+
+### 🚀 Direct Links
+- **Web Player:** `{watch_url}`
+- **Fast Download:** `{dl_url}`
+
+*Stream directly in browser, VLC, or MX Player with full seeking.*"""
+
+    keyboard_rows = []
+    if is_valid_tg_button_url(watch_url) and is_valid_tg_button_url(dl_url):
+        keyboard_rows.append([
+            {"text": "📺 Web Player", "url": watch_url},
+            {"text": "🚀 Fast Download", "url": dl_url}
+        ])
+
+    keyboard_rows.append([
+        {"text": "ℹ️ Info Card", "callback_data": f"info_file_{file_db_id}"},
+        {"text": "🗑️ Revoke", "callback_data": f"revoke_id_{file_db_id}"}
+    ])
+    keyboard_rows.append([
+        {"text": f"📢 Join {CHANNEL_USERNAME}", "url": f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"}
+    ])
+
+    sent = await send_rich_msg(message.chat.id, md, reply_markup={"inline_keyboard": keyboard_rows})
+    if not sent:
+        # Fallback to standard message if rich message encounters error
+        await message.reply(
+            f"<b>🦅 Link Ready — #{file_db_id}</b>\n\n"
+            f"• <b>File:</b> <code>{file_name}</code>\n"
+            f"• <b>Size:</b> <code>{size_formatted}</code>\n"
+            f"• <b>Player:</b> {watch_url}\n"
+            f"• <b>Download:</b> {dl_url}",
+            parse_mode=ParseMode.HTML,
+            link_preview_options=types.LinkPreviewOptions(is_disabled=True)
         )
-    channel_url = f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"
-    builder.row(
-        types.InlineKeyboardButton(text="ℹ️ File Info", callback_data=f"info_file_{file_db_id}"),
-        types.InlineKeyboardButton(text="🗑️ Revoke", callback_data=f"revoke_id_{file_db_id}")
-    )
-    builder.row(types.InlineKeyboardButton(text=f"📢 Join {CHANNEL_USERNAME}", url=channel_url))
-
-    response_text = (
-        f"<b>🦅 {BRAND_NAME} — Stream Link Ready!</b>\n\n"
-        f"🆔 <b>File ID:</b> <code>#{file_db_id}</code>\n"
-        f"📁 <b>File:</b> <code>{file_name}</code>\n"
-        f"📦 <b>Size:</b> <code>{size_formatted}</code>\n"
-        f"🎭 <b>Type:</b> <code>{cat_label}</code>\n"
-        f"⏱️ <b>Validity:</b> <code>{LINK_EXPIRY_HOURS} Hours</code>\n\n"
-        f"<b>🚀 Direct Download Link:</b>\n"
-        f"<code>{dl_url}</code> <i>(Tap to copy)</i>\n\n"
-        f"<b>📺 Stream / Player URL:</b>\n"
-        f"<code>{watch_url}</code>\n\n"
-        f"<i>Paste link in VLC, MX Player, Smart TV, or open directly in browser!</i>"
-    )
-
-    await message.reply(
-        response_text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=builder.as_markup(),
-        link_preview_options=types.LinkPreviewOptions(is_disabled=True)
-    )
 
     # Log to channel in background
-    asyncio.create_task(log_stream_generation(bot, message.from_user, file_db_id, file_name, size_formatted, dl_url))
+    asyncio.create_task(log_stream_generation(message.from_user, file_db_id, file_name, size_formatted, dl_url))
 
 async def main():
     global HTTP_SESSION
