@@ -3,6 +3,7 @@ import os
 import math
 import mimetypes
 import re
+import json
 from datetime import datetime, timezone
 import aiohttp
 from aiohttp import web
@@ -63,107 +64,89 @@ def get_media_category(mime_type: str, file_name: str) -> str:
         return "pdf"
     return "document"
 
+def detect_quality_tag(file_name: str, file_size: int) -> str:
+    fn = file_name.upper()
+    if "2160P" in fn or "4K" in fn or "UHD" in fn:
+        return "4K UHD"
+    elif "1080P" in fn or "FHD" in fn:
+        return "1080p FHD"
+    elif "720P" in fn or "HD" in fn:
+        return "720p HD"
+    elif file_size > 1024**3:
+        return "HD"
+    return "Direct"
+
 async def handle_root(request: web.Request) -> web.Response:
     stats = await db.get_global_stats()
+    storage_fmt = format_file_size(stats["active_bytes"])
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{BRAND_NAME} — Cinema Cloud Stream Engine</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }}
-        body {{
-            background: #06070a;
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.15) 0px, transparent 50%),
-                radial-gradient(at 100% 0%, rgba(129, 140, 248, 0.15) 0px, transparent 50%),
-                radial-gradient(at 50% 100%, rgba(14, 165, 233, 0.08) 0px, transparent 50%);
-            color: #f4f4f5;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
-        }}
-        .card {{
-            background: rgba(15, 17, 26, 0.75);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(28px);
-            border-radius: 28px;
-            padding: 48px 36px;
-            max-width: 560px;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 35px 80px rgba(0, 0, 0, 0.7);
-        }}
-        .logo {{ font-size: 56px; margin-bottom: 12px; filter: drop-shadow(0 0 24px rgba(56, 189, 248, 0.4)); }}
-        h1 {{
-            font-size: 32px;
-            font-weight: 800;
-            background: linear-gradient(135deg, #ffffff 30%, #38bdf8 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            letter-spacing: -0.5px;
-        }}
-        p {{ color: #94a3b8; font-size: 14px; margin-top: 10px; line-height: 1.6; }}
-        .stats-grid {{
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-            margin: 30px 0;
-        }}
-        .stat-box {{
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 18px;
-            padding: 16px 8px;
-        }}
-        .stat-num {{ font-size: 22px; font-weight: 800; color: #38bdf8; font-family: 'JetBrains Mono', monospace; }}
-        .stat-lbl {{ font-size: 11px; color: #64748b; text-transform: uppercase; margin-top: 4px; font-weight: 700; letter-spacing: 0.5px; }}
-        .btn {{
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            width: 100%;
-            background: linear-gradient(135deg, #0284c7, #2563eb);
-            color: #fff;
-            padding: 16px;
-            border-radius: 16px;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 15px;
-            box-shadow: 0 12px 30px rgba(37, 99, 235, 0.35);
-            transition: all 0.25s ease;
-        }}
-        .btn:hover {{ transform: translateY(-2px); box-shadow: 0 16px 36px rgba(37, 99, 235, 0.5); }}
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#F4F6FC">
+<title>{BRAND_NAME}</title>
+<style>
+:root{{
+  --canvas:#F4F6FC; --surface:#FFFFFF; --ink:#0E1426; --muted:#5A6480;
+  --blue:#2D6BFF; --violet:#8B5CF6; --pink:#FF4D8D; --green:#00C27A; --line:#E4E9F4;
+  --radius:22px;
+}}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{
+  font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  background:var(--canvas);color:var(--ink);min-height:100vh;
+  display:flex;align-items:center;justify-content:center;padding:24px;
+}}
+.card{{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:36px 32px;max-width:480px;width:100%;text-align:center;
+  box-shadow:0 14px 30px -20px rgba(14,20,38,.25);
+}}
+.logo{{
+  width:44px;height:44px;border-radius:12px;margin:0 auto 16px;display:grid;place-items:center;
+  color:#fff;font-weight:900;font-size:20px;
+  background:linear-gradient(135deg,var(--blue),var(--violet));
+  box-shadow:0 8px 20px -6px var(--blue);
+}}
+h1{{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}}
+p{{color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:24px}}
+.stats{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px}}
+.stat{{background:var(--canvas);border:1px solid var(--line);border-radius:14px;padding:12px 8px}}
+.stat-num{{font-size:18px;font-weight:800;color:var(--blue)}}
+.stat-lbl{{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-top:2px}}
+.btn{{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  padding:14px;border:0;border-radius:14px;cursor:pointer;
+  font-family:inherit;font-size:15px;font-weight:700;text-decoration:none;
+  color:#fff;background:var(--blue);
+  box-shadow:0 10px 24px -10px var(--blue);
+  transition:transform .12s ease;
+}}
+.btn:active{{transform:scale(.98)}}
+</style>
 </head>
 <body>
-    <div class="card">
-        <div class="logo">🦅</div>
-        <h1>{BRAND_NAME}</h1>
-        <p>Enterprise Cloud Streaming Engine. Direct MTProto multi-threaded pipelining with zero disk footprint and cinema web playback.</p>
-        
-        <div class="stats-grid">
-            <div class="stat-box">
-                <div class="stat-num">{stats['active_links']}</div>
-                <div class="stat-lbl">Active Links</div>
-            </div>
-            <div class="stat-box">
-                <div class="stat-num">{stats['total_downloads']}</div>
-                <div class="stat-lbl">Downloads</div>
-            </div>
-            <div class="stat-box">
-                <div class="stat-num">99.9%</div>
-                <div class="stat-lbl">Uptime</div>
-            </div>
-        </div>
-
-        <a href="https://t.me/{CHANNEL_USERNAME.lstrip('@')}" class="btn">Launch Telegram Bot</a>
+<div class="card">
+  <div class="logo">K</div>
+  <h1>{BRAND_NAME}</h1>
+  <p>Direct Telegram file downloads and high-speed web playback. Fast, minimal, and responsive.</p>
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-num">{stats['active_links']}</div>
+      <div class="stat-lbl">Active</div>
     </div>
+    <div class="stat">
+      <div class="stat-num">{storage_fmt}</div>
+      <div class="stat-lbl">Storage</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">{stats['total_downloads']}</div>
+      <div class="stat-lbl">Downloads</div>
+    </div>
+  </div>
+  <a href="https://t.me/{CHANNEL_USERNAME.lstrip('@')}" class="btn">Open in Telegram</a>
+</div>
 </body>
 </html>"""
     return web.Response(text=html, content_type="text/html")
@@ -179,768 +162,355 @@ async def handle_health(request: web.Request) -> web.Response:
     })
 
 async def handle_watch(request: web.Request) -> web.Response:
-    token = request.match_info.get("token")
-    record = await db.get_file_record(token)
+    identifier = request.match_info.get("identifier")
+    record = await db.get_file_by_id_or_token(identifier)
     if not record:
         return web.Response(
-            text="""<!DOCTYPE html><html><body style="background:#06070a;color:#f4f4f5;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
-            <div style="text-align:center;padding:24px;"><h1>404 - Link Expired or Not Found</h1><p style="color:#71717a;margin-top:8px;">This link has expired or has been revoked by the owner.</p></div></body></html>""",
+            text="""<!DOCTYPE html><html><body style="background:#F4F6FC;color:#0E1426;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+            <div style="text-align:center;padding:24px;"><h1>Link expired or not found</h1><p style="color:#5A6480;margin-top:8px;">This link has expired or has been removed.</p></div></body></html>""",
             content_type="text/html",
             status=404
         )
 
+    f_id = record["id"]
+    token = record["token"]
     file_name = record["file_name"]
     file_size = record["file_size"]
     file_size_fmt = format_file_size(file_size)
     mime_type = record.get("mime_type") or "application/octet-stream"
-    
+    ext = os.path.splitext(file_name)[1].lower().lstrip(".")
+    fmt_label = ext.upper() if ext else "FILE"
+    quality_label = detect_quality_tag(file_name, file_size)
+
     server_base = get_server_url()
+    stream_url = f"{server_base}/stream/{token}"
     dl_url = f"{server_base}/dl/{token}"
-    stream_url = dl_url
-    category = get_media_category(mime_type, file_name)
-    ext = os.path.splitext(file_name)[1].lower()
 
-    # 3rd-party player launch schemes
-    raw_url = stream_url.replace("https://", "").replace("http://", "")
-    vlc_url = f"vlc://{raw_url}"
-    mx_url = f"intent:{stream_url}#Intent;package=com.mxtech.videoplayer.ad;type=video/*;end"
-    potplayer_url = f"potplayer://{stream_url}"
+    file_data_json = json.dumps({
+        "id": f_id,
+        "name": file_name,
+        "size": file_size_fmt,
+        "format": fmt_label,
+        "quality": quality_label,
+        "stream": stream_url,
+        "download": dl_url
+    })
 
-    # Is MKV or non-native container
-    is_mkv = ext in [".mkv", ".avi", ".ts", ".flv"] or "matroska" in mime_type.lower()
-    
-    mkv_banner = ""
-    if is_mkv:
-        mkv_banner = f"""
-        <div class="codec-alert">
-            <div class="alert-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-            </div>
-            <div class="alert-content">
-                <div class="alert-title">MKV / Multi-Track Audio Notice</div>
-                <div class="alert-desc">Web browsers may not support AC3, DTS, or 10-bit anime subtitles natively. For stutter-free hardware decoding, launch directly in <b>VLC</b>, <b>MX Player</b>, or <b>PotPlayer</b> below.</div>
-            </div>
-        </div>
-        """
-
-    # Dynamic player block
-    if category == "video":
-        player_html = f"""
-        <div class="cinema-stage" id="cinemaStage">
-            <div class="ambilight-glow" id="ambilightGlow"></div>
-            <canvas id="ambientCanvas" style="display:none;"></canvas>
-            <div class="player-box">
-                <video id="player" playsinline controls preload="metadata" crossorigin="anonymous">
-                    <source src="{stream_url}" type="{mime_type}">
-                    Your browser does not support HTML5 video streaming.
-                </video>
-            </div>
-        </div>"""
-    elif category == "audio":
-        player_html = f"""
-        <div class="audio-stage">
-            <div class="vinyl-record" id="vinylRecord">
-                <div class="vinyl-core"></div>
-            </div>
-            <div class="audio-meta">
-                <div class="audio-title">{file_name}</div>
-                <div class="audio-subtitle">Lossless Audio Stream • {file_size_fmt}</div>
-            </div>
-            <div class="audio-player-wrapper">
-                <audio id="player" controls style="width: 100%;">
-                    <source src="{stream_url}" type="{mime_type}">
-                </audio>
-            </div>
-        </div>"""
-    elif category == "image":
-        player_html = f"""
-        <div class="image-stage">
-            <img src="{stream_url}" alt="{file_name}" id="imageViewer">
-        </div>"""
-    else:
-        player_html = f"""
-        <div class="doc-stage">
-            <div class="doc-badge">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-            </div>
-            <div class="doc-name">{file_name}</div>
-            <div class="doc-size">{file_size_fmt} • Document File</div>
-        </div>"""
-
+    # Bright Stage Player HTML exactly following Claude UI/UX specification
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{file_name} — {BRAND_NAME}</title>
-    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {{
-            --plyr-color-main: #0ea5e9;
-            --plyr-video-background: #000000;
-            --bg-canvas: #06070a;
-            --surface-panel: rgba(14, 16, 24, 0.78);
-            --surface-card: rgba(255, 255, 255, 0.03);
-            --border-subtle: rgba(255, 255, 255, 0.08);
-            --text-primary: #ffffff;
-            --text-secondary: #94a3b8;
-            --text-muted: #64748b;
-            --cyan-accent: #38bdf8;
-            --blue-accent: #2563eb;
-        }}
-        * {{ margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }}
-        body {{
-            background: var(--bg-canvas);
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.12) 0px, transparent 40%),
-                radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 40%),
-                radial-gradient(at 50% 100%, rgba(2, 132, 199, 0.08) 0px, transparent 50%);
-            color: var(--text-primary);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 20px 16px 60px;
-            overflow-x: hidden;
-            transition: background 0.5s ease;
-        }}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#F4F6FC">
+<title>{file_name} · {BRAND_NAME}</title>
+<style>
+:root{{
+  --canvas:#F4F6FC; --surface:#FFFFFF; --ink:#0E1426; --muted:#5A6480;
+  --blue:#2D6BFF; --violet:#8B5CF6; --pink:#FF4D8D; --green:#00C27A; --line:#E4E9F4;
+  --radius:22px;
+}}
+*{{box-sizing:border-box;margin:0;padding:0}}
+html{{-webkit-text-size-adjust:100%}}
+body{{
+  font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--canvas);color:var(--ink);min-height:100vh;
+  line-height:1.5;-webkit-font-smoothing:antialiased;
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}}
 
-        /* Top Bar */
-        .top-navbar {{
-            width: 100%;
-            max-width: 1140px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-            padding: 0 4px;
-        }}
-        .brand-link {{
-            font-size: 21px;
-            font-weight: 800;
-            color: #ffffff;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            text-decoration: none;
-            letter-spacing: -0.4px;
-        }}
-        .brand-link span {{
-            background: linear-gradient(135deg, #ffffff 40%, var(--cyan-accent) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }}
-        .nav-actions {{
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }}
-        .pipeline-pill {{
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: rgba(34, 197, 94, 0.08);
-            border: 1px solid rgba(34, 197, 94, 0.22);
-            padding: 7px 14px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: 700;
-            color: #4ade80;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-        }}
-        .pulse-light {{
-            width: 7px;
-            height: 7px;
-            background: #22c55e;
-            border-radius: 50%;
-            box-shadow: 0 0 10px #22c55e;
-            animation: pulse-ring 2s infinite;
-        }}
-        @keyframes pulse-ring {{
-            0% {{ transform: scale(0.9); opacity: 0.8; }}
-            50% {{ transform: scale(1.35); opacity: 1; }}
-            100% {{ transform: scale(0.9); opacity: 0.8; }}
-        }}
-        .theater-btn {{
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--text-primary);
-            padding: 7px 14px;
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            transition: all 0.2s ease;
-        }}
-        .theater-btn:hover {{ background: rgba(255, 255, 255, 0.12); }}
+/* ---------- Header ---------- */
+.top{{
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:env(safe-area-inset-top,0px) 20px 0;height:calc(60px + env(safe-area-inset-top,0px));
+  background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(14px);
+  -webkit-backdrop-filter:saturate(180%) blur(14px);
+  border-bottom:1px solid var(--line);
+}}
+.brand{{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px;letter-spacing:-.02em}}
+.logo{{
+  width:32px;height:32px;border-radius:10px;display:grid;place-items:center;
+  color:#fff;font-weight:900;font-size:16px;
+  background:linear-gradient(135deg,var(--blue),var(--violet));
+  box-shadow:0 6px 16px -6px var(--blue);
+}}
+.chip{{
+  font-size:12px;font-weight:700;color:var(--blue);
+  background:#EAF0FF;padding:6px 12px;border-radius:999px;white-space:nowrap;
+}}
 
-        /* Main Container */
-        .viewport-container {{
-            width: 100%;
-            max-width: 1140px;
-            background: var(--surface-panel);
-            border: 1px solid var(--border-subtle);
-            backdrop-filter: blur(28px);
-            border-radius: 28px;
-            overflow: hidden;
-            box-shadow: 0 35px 90px rgba(0, 0, 0, 0.75);
-            transition: max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-        }}
-        .viewport-container.theater-active {{
-            max-width: 98vw;
-        }}
+/* ---------- Hero ---------- */
+.hero{{position:relative;isolation:isolate;padding:28px 16px 0}}
+.hero::before{{
+  content:"";position:absolute;inset:-40px 0 auto;height:420px;z-index:-1;
+  background:
+    radial-gradient(60% 70% at 15% 20%,rgba(45,107,255,.35),transparent 70%),
+    radial-gradient(55% 65% at 85% 10%,rgba(139,92,246,.32),transparent 70%),
+    radial-gradient(50% 60% at 50% 60%,rgba(255,77,141,.18),transparent 70%);
+  filter:blur(10px);
+}}
+.wrap{{max-width:1120px;margin:0 auto}}
 
-        /* Cinema Player & Ambilight Glow */
-        .cinema-stage {{
-            position: relative;
-            width: 100%;
-            background: #000000;
-            overflow: hidden;
-        }}
-        .ambilight-glow {{
-            position: absolute;
-            top: 5%;
-            left: 5%;
-            width: 90%;
-            height: 90%;
-            background: radial-gradient(circle, rgba(56, 189, 248, 0.3) 0%, rgba(99, 102, 241, 0.18) 50%, transparent 80%);
-            filter: blur(70px);
-            z-index: 0;
-            pointer-events: none;
-            opacity: 0.8;
-            transition: background 0.8s ease, opacity 0.5s ease;
-        }}
-        .player-box {{
-            position: relative;
-            z-index: 1;
-            width: 100%;
-            background: #000000;
-        }}
-        .plyr {{
-            border-radius: 0;
-            max-height: 80vh;
-        }}
+.stage{{
+  position:relative;aspect-ratio:16/9;border-radius:var(--radius);overflow:hidden;
+  background:#05070F;
+  box-shadow:0 30px 60px -28px rgba(45,107,255,.55),0 0 0 1px rgba(14,20,38,.06);
+}}
+video{{width:100%;height:100%;display:block;background:#05070F}}
 
-        /* Codec Alert */
-        .codec-alert {{
-            display: flex;
-            align-items: flex-start;
-            gap: 14px;
-            background: rgba(245, 158, 11, 0.08);
-            border: 1px solid rgba(245, 158, 11, 0.22);
-            border-radius: 18px;
-            padding: 16px 20px;
-            margin: 22px 28px 0;
-            color: #fef08a;
-        }}
-        .alert-icon {{
-            color: #f59e0b;
-            flex-shrink: 0;
-            margin-top: 2px;
-        }}
-        .alert-title {{
-            font-size: 13.5px;
-            font-weight: 700;
-            color: #fbbf24;
-            margin-bottom: 4px;
-        }}
-        .alert-desc {{
-            font-size: 12.5px;
-            line-height: 1.55;
-            color: #fef3c7;
-        }}
+/* loading skeleton */
+.stage.loading::after{{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(110deg,#0c1224 30%,#18223d 50%,#0c1224 70%);
+  background-size:220% 100%;animation:shine 1.4s linear infinite;pointer-events:none;
+}}
+.stage.ready::after{{display:none}}
+@keyframes shine{{to{{background-position:-220% 0}}}}
 
-        /* Panel Body */
-        .panel-body {{
-            padding: 30px 32px 38px;
-        }}
+/* ---------- Content grid ---------- */
+.content{{
+  display:grid;gap:18px;padding:22px 16px 60px;
+  grid-template-columns:1fr;
+}}
+@media(min-width:900px){{
+  .content{{grid-template-columns:minmax(0,1fr) 360px;padding:26px 0 70px;gap:24px}}
+}}
+.wrap.grid{{padding:0}}
 
-        /* File Title Header */
-        .title-header {{
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 20px;
-            border-bottom: 1px solid var(--border-subtle);
-            padding-bottom: 24px;
-            margin-bottom: 26px;
-        }}
-        .filename-text {{
-            font-size: 21px;
-            font-weight: 800;
-            color: var(--text-primary);
-            line-height: 1.4;
-            word-break: break-all;
-            letter-spacing: -0.3px;
-        }}
-        .pills-row {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 14px;
-        }}
-        .tag-pill {{
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            padding: 6px 12px;
-            border-radius: 10px;
-        }}
-        .tag-highlight {{
-            color: var(--cyan-accent);
-            background: rgba(56, 189, 248, 0.08);
-            border-color: rgba(56, 189, 248, 0.22);
-            font-weight: 700;
-        }}
+.info{{padding:4px 2px}}
+h1{{
+  font-size:clamp(20px,2.8vw,30px);font-weight:800;letter-spacing:-.025em;line-height:1.2;
+  overflow-wrap:anywhere;
+}}
+.facts{{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}}
+.fact{{
+  font-size:13px;font-weight:700;padding:6px 12px;border-radius:10px;
+  background:var(--surface);border:1px solid var(--line);color:var(--ink);
+}}
+.fact.quality{{
+  color:#fff;border:0;
+  background:linear-gradient(135deg,var(--pink),var(--violet));
+}}
+.note{{margin-top:16px;font-size:14px;color:var(--muted);max-width:60ch}}
 
-        /* Actions Dock */
-        .actions-dock {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-            gap: 14px;
-            margin-bottom: 28px;
-        }}
-        .dock-btn {{
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            padding: 16px 20px;
-            border-radius: 16px;
-            font-size: 14px;
-            font-weight: 700;
-            text-decoration: none;
-            cursor: pointer;
-            border: 1px solid transparent;
-            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        }}
-        .btn-direct-download {{
-            grid-column: 1 / -1;
-            background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
-            color: #ffffff;
-            font-size: 16px;
-            padding: 18px;
-            border: none;
-            box-shadow: 0 14px 32px rgba(37, 99, 235, 0.35);
-        }}
-        .btn-direct-download:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 18px 40px rgba(37, 99, 235, 0.5);
-        }}
-        .btn-player-vlc {{
-            background: rgba(249, 115, 22, 0.12);
-            color: #fb923c;
-            border-color: rgba(249, 115, 22, 0.28);
-        }}
-        .btn-player-vlc:hover {{
-            background: rgba(249, 115, 22, 0.22);
-            transform: translateY(-2px);
-        }}
-        .btn-player-mx {{
-            background: rgba(14, 165, 233, 0.12);
-            color: #38bdf8;
-            border-color: rgba(14, 165, 233, 0.28);
-        }}
-        .btn-player-mx:hover {{
-            background: rgba(14, 165, 233, 0.22);
-            transform: translateY(-2px);
-        }}
-        .btn-player-pot {{
-            background: rgba(234, 179, 8, 0.12);
-            color: #facc15;
-            border-color: rgba(234, 179, 8, 0.28);
-        }}
-        .btn-player-pot:hover {{
-            background: rgba(234, 179, 8, 0.22);
-            transform: translateY(-2px);
-        }}
+/* ---------- Action panel ---------- */
+.panel{{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:20px;box-shadow:0 14px 30px -22px rgba(14,20,38,.25);
+}}
+.panel h2{{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:18px 0 10px}}
+.panel h2:first-child{{margin-top:0}}
 
-        /* URL Copy Bar */
-        .copy-bar {{
-            display: flex;
-            align-items: center;
-            background: rgba(0, 0, 0, 0.35);
-            border: 1px solid var(--border-subtle);
-            border-radius: 16px;
-            padding: 6px 6px 6px 16px;
-            margin-bottom: 28px;
-            gap: 12px;
-        }}
-        .copy-input {{
-            flex: 1;
-            background: transparent;
-            border: none;
-            outline: none;
-            color: var(--cyan-accent);
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 13px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }}
-        .copy-action-btn {{
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            color: #ffffff;
-            font-weight: 700;
-            font-size: 13px;
-            padding: 10px 18px;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            white-space: nowrap;
-        }}
-        .copy-action-btn:hover {{
-            background: rgba(255, 255, 255, 0.16);
-        }}
+.btn{{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  padding:15px 16px;border:0;border-radius:14px;cursor:pointer;
+  font-family:inherit;font-size:15px;font-weight:700;line-height:1;text-decoration:none;
+  transition:transform .12s ease,box-shadow .2s ease,background .2s ease;
+}}
+.btn:active{{transform:scale(.97)}}
+.btn-download{{
+  color:#fff;background:var(--green);
+  box-shadow:0 14px 28px -14px var(--green);
+}}
+.btn-download:hover{{box-shadow:0 18px 32px -14px var(--green)}}
 
-        /* Bento Grid */
-        .bento-grid {{
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 14px;
-            margin-bottom: 24px;
-        }}
-        .bento-card {{
-            background: var(--surface-card);
-            border: 1px solid var(--border-subtle);
-            border-radius: 18px;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }}
-        .bento-label {{
-            font-size: 11px;
-            font-weight: 700;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-            margin-bottom: 8px;
-        }}
-        .bento-value {{
-            font-size: 16px;
-            font-weight: 700;
-            color: #ffffff;
-        }}
-        .bento-sub {{
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin-top: 4px;
-            font-family: 'JetBrains Mono', monospace;
-        }}
+.apps{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
+.app{{
+  display:flex;align-items:center;gap:10px;padding:12px;
+  background:var(--canvas);border:1px solid var(--line);border-radius:14px;
+  color:var(--ink);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;
+  transition:border-color .2s,transform .12s;text-align:left;
+}}
+.app:hover{{border-color:var(--blue)}}
+.app:active{{transform:scale(.97)}}
+.app .ico{{
+  width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex:none;
+  color:#fff;font-weight:900;font-size:14px;background:var(--c);
+}}
+.app.highlight{{border-color:var(--pink);box-shadow:0 0 0 4px rgba(255,77,141,.15)}}
 
-        /* Keyboard Controls HUD */
-        .hud-footer {{
-            display: flex;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 16px;
-            padding-top: 20px;
-            border-top: 1px solid var(--border-subtle);
-            font-size: 12px;
-            color: var(--text-muted);
-        }}
-        .hud-key {{
-            display: inline-block;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            border-radius: 6px;
-            padding: 2px 7px;
-            color: #cbd5e1;
-            font-family: 'JetBrains Mono', monospace;
-            font-weight: 600;
-            font-size: 11px;
-        }}
+.copy{{
+  margin-top:10px;width:100%;padding:13px;border-radius:14px;
+  background:transparent;border:1px dashed #C8D1E6;color:var(--muted);
+  font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;
+}}
+.copy:hover{{color:var(--blue);border-color:var(--blue)}}
 
-        /* Audio / Vinyl */
-        .audio-stage {{
-            padding: 60px 24px;
-            text-align: center;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }}
-        .vinyl-record {{
-            width: 140px;
-            height: 140px;
-            border-radius: 50%;
-            background: radial-gradient(circle, #1e293b 0%, #0f172a 40%, #020617 100%);
-            border: 3px solid rgba(255, 255, 255, 0.15);
-            box-shadow: 0 0 40px rgba(56, 189, 248, 0.25);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 24px;
-            animation: spin 10s linear infinite paused;
-        }}
-        .vinyl-record.playing {{ animation-play-state: running; }}
-        @keyframes spin {{ 100% {{ transform: rotate(360deg); }} }}
-        .vinyl-core {{
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
-            background: #0ea5e9;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
-        }}
-        .audio-title {{
-            font-size: 22px;
-            font-weight: 800;
-            color: #ffffff;
-            max-width: 640px;
-            word-break: break-all;
-        }}
-        .audio-subtitle {{
-            font-size: 14px;
-            color: var(--text-muted);
-            margin-top: 6px;
-        }}
-        .audio-player-wrapper {{
-            width: 100%;
-            max-width: 600px;
-            margin-top: 28px;
-        }}
+.help{{margin-top:14px;font-size:13px;color:var(--muted)}}
 
-        /* Image Stage */
-        .image-stage {{
-            padding: 30px;
-            text-align: center;
-        }}
-        .image-stage img {{
-            max-width: 100%;
-            max-height: 75vh;
-            border-radius: 18px;
-            box-shadow: 0 25px 60px rgba(0,0,0,0.6);
-        }}
+/* ---------- Bottom sheet (mobile external players) ---------- */
+.scrim{{
+  position:fixed;inset:0;background:rgba(14,20,38,.35);opacity:0;pointer-events:none;
+  transition:opacity .25s;z-index:40;
+}}
+.sheet{{
+  position:fixed;left:0;right:0;bottom:0;z-index:41;background:var(--surface);
+  border-radius:24px 24px 0 0;padding:14px 20px calc(20px + env(safe-area-inset-bottom,0px));
+  transform:translateY(105%);transition:transform .3s cubic-bezier(.2,.8,.2,1);
+  box-shadow:0 -20px 40px -20px rgba(14,20,38,.35);
+}}
+.sheet .grab{{width:44px;height:5px;border-radius:99px;background:var(--line);margin:0 auto 14px}}
+.sheet h3{{font-size:17px;font-weight:800;margin-bottom:4px}}
+.sheet p{{font-size:14px;color:var(--muted);margin-bottom:14px}}
+.sheet .apps{{grid-template-columns:1fr 1fr 1fr}}
+.sheet .app{{flex-direction:column;text-align:center;padding:14px 8px}}
+.open .scrim{{opacity:1;pointer-events:auto}}
+.open .sheet{{transform:translateY(0)}}
 
-        /* Doc Stage */
-        .doc-stage {{
-            padding: 60px 24px;
-            text-align: center;
-        }}
-        .doc-badge {{
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 20px;
-            background: rgba(56, 189, 248, 0.08);
-            border: 1px solid rgba(56, 189, 248, 0.25);
-            border-radius: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }}
-        .doc-name {{
-            font-size: 22px;
-            font-weight: 800;
-            color: #fff;
-            max-width: 640px;
-            margin: 0 auto;
-            word-break: break-all;
-        }}
-        .doc-size {{
-            font-size: 14px;
-            color: var(--text-muted);
-            margin-top: 8px;
-        }}
-
-        /* Floating Toast */
-        .floating-toast {{
-            position: fixed;
-            bottom: 30px;
-            background: rgba(24, 24, 32, 0.95);
-            color: #ffffff;
-            padding: 14px 28px;
-            border-radius: 999px;
-            font-size: 14px;
-            font-weight: 700;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            backdrop-filter: blur(16px);
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
-            opacity: 0;
-            transform: translateY(20px);
-            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-            pointer-events: none;
-            z-index: 999;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }}
-        .floating-toast.show {{
-            opacity: 1;
-            transform: translateY(0);
-        }}
-
-        @media (max-width: 768px) {{
-            .panel-body {{ padding: 22px 18px 28px; }}
-            .bento-grid {{ grid-template-columns: 1fr; }}
-            .filename-text {{ font-size: 18px; }}
-            .top-navbar {{ flex-wrap: wrap; gap: 12px; }}
-        }}
-    </style>
+/* ---------- Toast ---------- */
+.toast{{
+  position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));
+  transform:translate(-50%,160px);background:var(--ink);color:#fff;
+  padding:12px 18px;border-radius:14px;font-size:14px;font-weight:600;
+  transition:transform .35s cubic-bezier(.2,.8,.2,1);z-index:60;white-space:nowrap;
+  box-shadow:0 14px 30px -12px rgba(14,20,38,.6);
+}}
+.toast.show{{transform:translate(-50%,0)}}
+</style>
 </head>
 <body>
-    <div class="top-navbar">
-        <a href="/" class="brand-link">🦅 <span>{BRAND_NAME}</span></a>
-        <div class="nav-actions">
-            <button class="theater-btn" onclick="toggleTheater()">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-                Theater Mode
-            </button>
-            <div class="pipeline-pill">
-                <span class="pulse-light"></span>
-                MTProto Pipeline Active
-            </div>
-        </div>
+
+<header class="top">
+  <div class="brand"><div class="logo">K</div>Kayi Stream</div>
+  <div class="chip" id="chip"></div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="stage loading" id="stage">
+      <video id="player" controls playsinline preload="metadata"></video>
     </div>
+  </div>
+</section>
 
-    <div class="viewport-container" id="mainContainer">
-        {player_html}
-        {mkv_banner}
-
-        <div class="panel-body">
-            <div class="title-header">
-                <div>
-                    <h1 class="filename-text">{file_name}</h1>
-                    <div class="pills-row">
-                        <span class="tag-pill tag-highlight">{file_size_fmt}</span>
-                        <span class="tag-pill">{category.upper()}</span>
-                        <span class="tag-pill">MTProto 1MB Chunks</span>
-                        <span class="tag-pill">Zero-RAM Buffer</span>
-                        <span class="tag-pill">Valid 24h</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="actions-dock">
-                <a href="{dl_url}" class="dock-btn btn-direct-download" download>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    Direct High-Speed Download
-                </a>
-                <a href="{vlc_url}" class="dock-btn btn-player-vlc">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L6 19H18L12 2ZM12 6.5L14.7 15H9.3L12 6.5Z"/></svg>
-                    Open in VLC Player
-                </a>
-                <a href="{mx_url}" class="dock-btn btn-player-mx">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                    Open in MX Player
-                </a>
-                <a href="{potplayer_url}" class="dock-btn btn-player-pot">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
-                    Open in PotPlayer
-                </a>
-            </div>
-
-            <div class="copy-bar">
-                <input type="text" class="copy-input" id="streamUrlInput" value="{stream_url}" readonly>
-                <button class="copy-action-btn" onclick="copyStreamUrl()">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                    Copy Stream Link
-                </button>
-            </div>
-
-            <div class="bento-grid">
-                <div class="bento-card">
-                    <div class="bento-label">File Profile</div>
-                    <div class="bento-value">{category.capitalize()} Container</div>
-                    <div class="bento-sub">{mime_type}</div>
-                </div>
-                <div class="bento-card">
-                    <div class="bento-label">Streaming Protocol</div>
-                    <div class="bento-value">MTProto 2GB+ Pipeline</div>
-                    <div class="bento-sub">RFC 7233 Byte Seeking</div>
-                </div>
-                <div class="bento-card">
-                    <div class="bento-label">Data Volume</div>
-                    <div class="bento-value">{file_size_fmt}</div>
-                    <div class="bento-sub">{file_size:,} bytes</div>
-                </div>
-            </div>
-
-            <div class="hud-footer">
-                <span><span class="hud-key">Space</span> Play/Pause</span>
-                <span><span class="hud-key">F</span> Fullscreen</span>
-                <span><span class="hud-key">T</span> Theater Mode</span>
-                <span><span class="hud-key">M</span> Mute</span>
-                <span><span class="hud-key">← / →</span> 10s Seek</span>
-                <span><span class="hud-key">↑ / ↓</span> Volume</span>
-            </div>
-        </div>
+<main class="wrap content">
+  <div class="info">
+    <h1 id="title"></h1>
+    <div class="facts">
+      <span class="fact" id="size"></span>
+      <span class="fact" id="format"></span>
+      <span class="fact quality" id="quality"></span>
     </div>
+    <p class="note" id="note">Playing in your browser. If the video doesn't start, open it in a dedicated player.</p>
+  </div>
 
-    <div id="toast" class="floating-toast">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-        Direct stream link copied to clipboard!
+  <aside class="panel">
+    <h2>Download</h2>
+    <a class="btn btn-download" id="dl" href="#">Download file</a>
+
+    <h2>Open in</h2>
+    <div class="apps">
+      <button class="app" data-app="vlc"><span class="ico" style="--c:#FF7A00">V</span>VLC</button>
+      <button class="app" data-app="mx"><span class="ico" style="--c:#7C3AED">M</span>MX Player</button>
+      <button class="app" data-app="pot"><span class="ico" style="--c:#F59E0B">P</span>PotPlayer</button>
+      <button class="app" data-app="more"><span class="ico" style="--c:#2D6BFF">+</span>More</button>
     </div>
+    <button class="copy" id="copy">Copy link</button>
+    <p class="help" id="help">Works best in VLC, MX Player, or PotPlayer for MKV files with multiple audio or subtitle tracks.</p>
+  </aside>
+</main>
 
-    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {{
-            const videoEl = document.getElementById('player');
-            const vinyl = document.getElementById('vinylRecord');
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="grab"></div>
+  <h3 id="sheetTitle">Open in a player</h3>
+  <p>Choose a player to play this file with full audio and subtitle support.</p>
+  <div class="apps">
+    <button class="app" data-app="vlc"><span class="ico" style="--c:#FF7A00">V</span>VLC</button>
+    <button class="app" data-app="mx"><span class="ico" style="--c:#7C3AED">M</span>MX Player</button>
+    <button class="app" data-app="pot"><span class="ico" style="--c:#F59E0B">P</span>PotPlayer</button>
+  </div>
+</div>
 
-            if (videoEl) {{
-                const player = new Plyr(videoEl, {{
-                    controls: ['play-large', 'play', 'progress', 'current-time', 'duration', 'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'fullscreen'],
-                    speed: {{ selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] }},
-                    keyboard: {{ focused: true, global: true }},
-                    seekTime: 10
-                }});
+<div class="toast" id="toast"></div>
 
-                if (vinyl) {{
-                    videoEl.addEventListener('play', () => vinyl.classList.add('playing'));
-                    videoEl.addEventListener('pause', () => vinyl.classList.remove('playing'));
-                }}
+<script>
+/* Injected by the server for each file */
+const F = {file_data_json};
 
-                // Keyboard 'T' for theater mode
-                document.addEventListener('keydown', (e) => {{
-                    if (e.key === 't' || e.key === 'T') {{
-                        if (document.activeElement.tagName !== 'INPUT') {{
-                            toggleTheater();
-                        }}
-                    }}
-                }});
-            }}
-        }});
+const $ = id => document.getElementById(id);
+const abs = new URL(F.stream, location.href).href;
+const isAndroid = /Android/i.test(navigator.userAgent);
+const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
 
-        function toggleTheater() {{
-            const c = document.getElementById('mainContainer');
-            if (c) {{
-                c.classList.toggle('theater-active');
-            }}
-        }}
+/* Fill the page */
+$("title").textContent = F.name;
+$("size").textContent = F.size;
+$("format").textContent = F.format;
+$("quality").textContent = F.quality;
+$("chip").textContent = "ID " + F.id;
+$("dl").href = F.download;
+document.title = F.name + " · Kayi Stream";
+$("player").src = F.stream;
 
-        function copyStreamUrl() {{
-            const input = document.getElementById('streamUrlInput');
-            if (input) {{
-                navigator.clipboard.writeText(input.value).then(() => {{
-                    const toast = document.getElementById('toast');
-                    toast.classList.add('show');
-                    setTimeout(() => toast.classList.remove('show'), 2500);
-                }});
-            }}
-        }}
-    </script>
+/* Loading and ready states */
+const player = $("player");
+player.addEventListener("loadeddata", () => $("stage").classList.replace("loading", "ready"));
+
+/* Friendly fallback when the browser can't decode the file */
+player.addEventListener("error", () => {{
+  $("stage").classList.replace("loading", "ready");
+  $("note").textContent = "This file won't play in the browser. Open it in VLC or MX Player below.";
+  document.querySelectorAll('.app[data-app="vlc"], .app[data-app="mx"]').forEach(b => b.classList.add("highlight"));
+  if (isMobile) openSheet();
+}});
+
+/* Toast */
+function toast(msg){{
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove("show"), 2200);
+}}
+
+/* Bottom sheet */
+function openSheet(){{ document.body.classList.add("open"); }}
+function closeSheet(){{ document.body.classList.remove("open"); }}
+$("scrim").addEventListener("click", closeSheet);
+
+/* External players */
+function intentFor(pkg){{
+  return `intent:${{abs}}#Intent;package=${{pkg}};type=video/*;S.title=${{encodeURIComponent(F.name)}};end`;
+}}
+function copyLink(message = "Link copied"){{
+  navigator.clipboard.writeText(abs).then(() => toast(message)).catch(() => toast("Could not copy link"));
+}}
+function openExternal(app){{
+  if(app === "more"){{ openSheet(); return; }}
+  let target = null;
+  if(app === "vlc") target = isAndroid ? intentFor("org.videolan.vlc") : "vlc://" + abs;
+  if(app === "pot") target = "potplayer://" + abs;
+  if(app === "mx" && isAndroid) target = intentFor("com.mxtech.videoplayer.ad");
+
+  if(!target){{
+    closeSheet();
+    copyLink("Paste this link into your player");
+    return;
+  }}
+  closeSheet();
+  location.href = target;
+}}
+
+document.querySelectorAll("[data-app]").forEach(b =>
+  b.addEventListener("click", () => openExternal(b.dataset.app))
+);
+$("copy").addEventListener("click", () => copyLink());
+</script>
 </body>
 </html>"""
     return web.Response(text=html, content_type="text/html")
 
+async def handle_stream(request: web.Request) -> web.StreamResponse:
+    return await handle_media_transfer(request, is_download=False)
+
 async def handle_download(request: web.Request) -> web.StreamResponse:
-    token = request.match_info.get("token")
-    record = await db.get_file_record(token)
+    return await handle_media_transfer(request, is_download=True)
+
+async def handle_media_transfer(request: web.Request, is_download: bool) -> web.StreamResponse:
+    identifier = request.match_info.get("identifier")
+    record = await db.get_file_by_id_or_token(identifier)
     if not record:
         return web.Response(text="File not found or link expired.", status=404)
 
@@ -952,7 +522,7 @@ async def handle_download(request: web.Request) -> web.StreamResponse:
     # Clean file name for Content-Disposition
     safe_name = re.sub(r'[^\w\.\-\s\[\]\(\)]', '_', file_name)
 
-    # 1. MTProto Streaming Engine (Pyrogram - No 20MB limit, handles up to 2GB/4GB)
+    # 1. MTProto Streaming Engine (Pyrogram - handles files up to 2GB/4GB)
     if pyrogram_client is not None:
         try:
             range_header = request.headers.get("Range")
@@ -973,7 +543,9 @@ async def handle_download(request: web.Request) -> web.StreamResponse:
             response.headers["Content-Type"] = mime_type
             response.headers["Content-Length"] = str(content_length)
             response.headers["Accept-Ranges"] = "bytes"
-            response.headers["Content-Disposition"] = f'attachment; filename="{safe_name}"'
+            
+            disposition_type = "attachment" if is_download else "inline"
+            response.headers["Content-Disposition"] = f'{disposition_type}; filename="{safe_name}"'
             
             if range_header:
                 response.headers["Content-Range"] = f"bytes {start_byte}-{end_byte}/{file_size}"
@@ -1008,7 +580,8 @@ async def handle_download(request: web.Request) -> web.StreamResponse:
                     break
 
             await response.write_eof()
-            asyncio.create_task(db.increment_download_count(token))
+            if is_download:
+                asyncio.create_task(db.increment_download_count(record["token"]))
             return response
 
         except Exception as e:
@@ -1026,13 +599,13 @@ async def handle_download(request: web.Request) -> web.StreamResponse:
                     return web.Response(text=f"Telegram API Error: {data.get('description', 'Unknown')}", status=502)
                 file_path = data["result"]["file_path"]
 
-            stream_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+            upstream_stream_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
             headers = {}
             range_header = request.headers.get("Range")
             if range_header:
                 headers["Range"] = range_header
 
-            async with session.get(stream_url, headers=headers, timeout=aiohttp.ClientTimeout(total=None, sock_read=60)) as upstream_resp:
+            async with session.get(upstream_stream_url, headers=headers, timeout=aiohttp.ClientTimeout(total=None, sock_read=60)) as upstream_resp:
                 status = upstream_resp.status
                 response = web.StreamResponse(status=status)
 
@@ -1042,7 +615,8 @@ async def handle_download(request: web.Request) -> web.StreamResponse:
                         response.headers[h] = val
 
                 response.headers["Accept-Ranges"] = "bytes"
-                response.headers["Content-Disposition"] = f'attachment; filename="{safe_name}"'
+                disposition_type = "attachment" if is_download else "inline"
+                response.headers["Content-Disposition"] = f'{disposition_type}; filename="{safe_name}"'
 
                 if request.method == "HEAD":
                     await response.prepare(request)
@@ -1058,7 +632,8 @@ async def handle_download(request: web.Request) -> web.StreamResponse:
                 except (asyncio.CancelledError, ConnectionResetError):
                     pass
 
-                asyncio.create_task(db.increment_download_count(token))
+                if is_download:
+                    asyncio.create_task(db.increment_download_count(record["token"]))
                 return response
 
     return web.Response(text="Streaming pipeline unavailable for this file size.", status=503)
@@ -1084,8 +659,11 @@ async def start_server():
     app = web.Application()
     app.router.add_get("/", handle_root)
     app.router.add_get("/health", handle_health)
-    app.router.add_get("/watch/{token}", handle_watch)
-    app.router.add_get("/dl/{token}", handle_download)
+    
+    # Dual support for /watch, /stream, /dl by numerical ID or token
+    app.router.add_get("/watch/{identifier}", handle_watch)
+    app.router.add_get("/stream/{identifier}", handle_stream)
+    app.router.add_get("/dl/{identifier}", handle_download)
 
     runner = web.AppRunner(app)
     await runner.setup()
