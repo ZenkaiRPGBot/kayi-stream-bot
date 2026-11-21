@@ -24,6 +24,12 @@
   const btnSettings = $('btnSettings');
   const settingsMenu = $('settingsMenu');
   const btnFullscreen = $('btnFullscreen');
+  const btnPip = $('btnPip');
+  const btnRewind = $('btnRewind');
+  const btnForward = $('btnForward');
+  const btnSpeed = $('btnSpeed');
+  const bigPlayBtn = $('bigPlayBtn');
+  const heroPlayBtn = $('heroPlayBtn');
   const audioListEl = $('audioTrackList');
   const subListEl = $('subTrackList');
   const copyLinkBtn = $('copyLinkBtn');
@@ -33,6 +39,16 @@
   let mediaTracks = null;
   let activeSubTrackIndex = -1; // -1 = Off
   let hideControlsTimer = null;
+
+  function triggerHaptic(type = 'light') {
+    try {
+      if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+        if (type === 'medium') window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
+        else if (type === 'heavy') window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+        else window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
+      }
+    } catch(e) {}
+  }
 
   // Format seconds to H:MM:SS or M:SS
   function formatTime(seconds) {
@@ -459,6 +475,7 @@
   video.addEventListener('timeupdate', updateProgress);
   video.addEventListener('play', () => {
     updatePlayIcons();
+    if (bigPlayBtn) bigPlayBtn.classList.add('hidden');
     resetControlsTimer();
   });
   video.addEventListener('pause', () => {
@@ -470,17 +487,98 @@
     showPlaybackError();
   });
 
-  btnPlay.addEventListener('click', togglePlay);
+  btnPlay.addEventListener('click', () => {
+    triggerHaptic('medium');
+    togglePlay();
+  });
   seekContainer.addEventListener('click', seekToPosition);
-  btnMute.addEventListener('click', toggleMute);
+  btnMute.addEventListener('click', () => {
+    triggerHaptic('light');
+    toggleMute();
+  });
   volSlider.addEventListener('input', (e) => {
     video.volume = parseFloat(e.target.value);
     video.muted = video.volume === 0;
     updateVolUI();
   });
 
-  btnSettings.addEventListener('click', toggleSettingsMenu);
-  btnFullscreen.addEventListener('click', toggleFullscreen);
+  if (bigPlayBtn) {
+    bigPlayBtn.addEventListener('click', () => {
+      triggerHaptic('medium');
+      bigPlayBtn.classList.add('hidden');
+      togglePlay();
+    });
+  }
+
+  if (heroPlayBtn) {
+    heroPlayBtn.addEventListener('click', () => {
+      triggerHaptic('medium');
+      if (bigPlayBtn) bigPlayBtn.classList.add('hidden');
+      stage.scrollIntoView({ behavior: 'smooth' });
+      video.play().catch(() => {});
+    });
+  }
+
+  if (btnRewind) {
+    btnRewind.addEventListener('click', () => {
+      triggerHaptic('light');
+      video.currentTime = Math.max(0, video.currentTime - 10);
+      updateProgress();
+      resetControlsTimer();
+    });
+  }
+
+  if (btnForward) {
+    btnForward.addEventListener('click', () => {
+      triggerHaptic('light');
+      video.currentTime = Math.min(video.duration || 0, video.currentTime + 10);
+      updateProgress();
+      resetControlsTimer();
+    });
+  }
+
+  if (btnPip) {
+    btnPip.addEventListener('click', async () => {
+      triggerHaptic('light');
+      try {
+        if (document.pictureInPictureElement) {
+          await document.exitPictureInPicture();
+        } else if (document.pictureInPictureEnabled && video.requestPictureInPicture) {
+          await video.requestPictureInPicture();
+        }
+      } catch (err) {
+        showToast('PiP not supported on this device');
+      }
+    });
+  }
+
+  if (btnSpeed) {
+    btnSpeed.addEventListener('click', (e) => {
+      triggerHaptic('light');
+      toggleSettingsMenu(e);
+    });
+  }
+
+  document.querySelectorAll('.speed-opt').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      triggerHaptic('light');
+      const rate = parseFloat(btn.getAttribute('data-speed'));
+      video.playbackRate = rate;
+      if (btnSpeed) btnSpeed.textContent = rate + 'x';
+      document.querySelectorAll('.speed-opt').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      settingsMenu.classList.remove('open');
+    });
+  });
+
+  btnSettings.addEventListener('click', (e) => {
+    triggerHaptic('light');
+    toggleSettingsMenu(e);
+  });
+  btnFullscreen.addEventListener('click', () => {
+    triggerHaptic('medium');
+    toggleFullscreen();
+  });
 
   // Close settings menu when clicking outside
   document.addEventListener('click', (e) => {

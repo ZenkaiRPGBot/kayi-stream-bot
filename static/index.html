@@ -2,136 +2,278 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#FFFFFF">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0B0C10">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>{{file_name}} · {{brand_name}}</title>
+  
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  
   <link rel="stylesheet" href="/static/player.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
-<body>
+<body class="cinema-theme">
 
-  <!-- 56px Minimal Header -->
-  <header class="site-header">
-    <a href="/" class="brand-wordmark">{{brand_name}}</a>
-    <span class="header-meta">ID {{file_id}}</span>
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-badge">
+        <span class="brand-dot"></span>
+        <span class="brand-name">{{brand_name}}</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="badge-engine">⚡ High-Speed RAM Stream</span>
+      <span class="badge-status">Live</span>
+    </div>
   </header>
 
-  <!-- Main Content Wrapper -->
-  <main class="main-wrapper">
+  <!-- Main Container -->
+  <main class="app-container">
 
-    <!-- 16:9 Video Stage -->
-    <div class="stage-container" id="videoStage">
-      <video id="mainVideo" playsinline preload="metadata"></video>
+    <!-- 16:9 Video & Cinema Stage -->
+    <section class="player-card">
+      <div class="stage-wrapper" id="videoStage">
+        <video id="mainVideo" playsinline preload="metadata"></video>
 
-      <!-- Loading Spinner -->
-      <div class="spinner-overlay" id="spinnerOverlay">
-        <div class="spinner"></div>
-        <span class="sp-text" id="spText">Loading...</span>
-      </div>
+        <!-- Big Center Play Button Overlay -->
+        <button class="big-play-btn" id="bigPlayBtn" aria-label="Play video">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
 
-      <!-- Single Calm Error Overlay -->
-      <div class="error-overlay" id="errorOverlay">
-        <div class="error-title">This file can't play in the browser</div>
-        <div class="error-desc">You can open this file directly in an external media player or download it to your device.</div>
-        <div class="error-launchers">
-          <a class="btn-player-alt" href="{{vlc_url}}">Open in VLC</a>
-          <a class="btn-player-alt" href="{{mx_url}}">Open in MX Player</a>
-          <a class="btn-player-alt" href="{{potplayer_url}}">Open in PotPlayer</a>
+        <!-- Loading Spinner -->
+        <div class="spinner-overlay" id="spinnerOverlay">
+          <div class="pulse-spinner"></div>
+          <span class="sp-text" id="spText">Buffering Stream...</span>
         </div>
-      </div>
 
-      <!-- Custom Minimal Controls Bar -->
-      <div class="controls-bar" id="controlsBar">
-        <!-- Progress Bar -->
-        <div class="seek-container" id="seekContainer">
-          <div class="seek-track">
-            <div class="seek-buffer" id="seekBuffer"></div>
-            <div class="seek-fill" id="seekFill"></div>
+        <!-- External Player Fallback Overlay -->
+        <div class="error-overlay" id="errorOverlay">
+          <div class="error-card">
+            <div class="error-icon">🎬</div>
+            <h3 class="error-title">Browser Playback Notice</h3>
+            <p class="error-desc">This video format or codec is optimized for external media hardware players.</p>
+            <div class="error-launchers">
+              <a class="btn-launcher" href="{{vlc_url}}">
+                <span>Cone</span> VLC Player
+              </a>
+              <a class="btn-launcher" href="{{mx_url}}">
+                <span>Play</span> MX Player
+              </a>
+              <a class="btn-launcher" href="{{potplayer_url}}">
+                <span>Media</span> PotPlayer
+              </a>
+              <a class="btn-launcher primary" href="{{download_url}}" download>
+                <span>⚡</span> Download File
+              </a>
+            </div>
           </div>
         </div>
 
-        <!-- Controls Row -->
-        <div class="controls-row">
-          <div class="controls-left">
-            <button class="ctrl-btn" id="btnPlay" aria-label="Play/Pause">
-              <svg id="iconPlay" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-              <svg id="iconPause" viewBox="0 0 24 24" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-            </button>
+        <!-- Custom Controls Bar -->
+        <div class="controls-bar" id="controlsBar">
+          <!-- Seek Timeline -->
+          <div class="seek-container" id="seekContainer">
+            <div class="seek-track">
+              <div class="seek-buffer" id="seekBuffer"></div>
+              <div class="seek-fill" id="seekFill"></div>
+            </div>
+            <div class="seek-hover" id="seekHover">00:00</div>
+          </div>
 
-            <div class="vol-wrapper">
-              <button class="ctrl-btn" id="btnMute" aria-label="Mute/Unmute">
-                <svg id="iconVolHigh" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
-                <svg id="iconVolMute" viewBox="0 0 24 24" style="display:none;"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+          <!-- Controls Row -->
+          <div class="controls-row">
+            <div class="ctrl-group left">
+              <!-- Play / Pause -->
+              <button class="ctrl-btn" id="btnPlay" aria-label="Play/Pause">
+                <svg id="iconPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                <svg id="iconPause" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
               </button>
-              <input type="range" class="vol-slider" id="volSlider" min="0" max="1" step="0.05" value="1" aria-label="Volume">
+
+              <!-- Skip -10s -->
+              <button class="ctrl-btn" id="btnRewind" aria-label="Skip backward 10 seconds">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/><text x="12" y="15" font-size="8" font-family="sans-serif" font-weight="bold" text-anchor="middle" fill="currentColor">10</text></svg>
+              </button>
+
+              <!-- Skip +10s -->
+              <button class="ctrl-btn" id="btnForward" aria-label="Skip forward 10 seconds">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/><text x="12" y="15" font-size="8" font-family="sans-serif" font-weight="bold" text-anchor="middle" fill="currentColor">10</text></svg>
+              </button>
+
+              <!-- Volume & Mute -->
+              <div class="vol-wrapper">
+                <button class="ctrl-btn" id="btnMute" aria-label="Mute/Unmute">
+                  <svg id="iconVolHigh" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                  <svg id="iconVolMute" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+                </button>
+                <input type="range" class="vol-slider" id="volSlider" min="0" max="1" step="0.05" value="1" aria-label="Volume">
+              </div>
+
+              <!-- Time display -->
+              <div class="time-display">
+                <span id="timeCurrent">0:00</span> <span class="time-sep">/</span> <span id="timeDuration">0:00</span>
+              </div>
             </div>
 
-            <div class="time-display">
-              <span id="timeCurrent">0:00</span> / <span id="timeDuration">0:00</span>
+            <div class="ctrl-group right">
+              <!-- Playback Speed -->
+              <button class="ctrl-pill-btn" id="btnSpeed" aria-label="Playback speed">1x</button>
+
+              <!-- Track Settings (Audio/Subtitles) -->
+              <button class="ctrl-btn" id="btnSettings" aria-label="Audio & Subtitle Settings">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+              </button>
+
+              <!-- Picture-in-Picture -->
+              <button class="ctrl-btn" id="btnPip" aria-label="Picture in Picture">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 11h-8v6h8v-6zm4 8V5c0-1.1-.9-2-2-2H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 0H3V5h18v14z"/></svg>
+              </button>
+
+              <!-- Fullscreen -->
+              <button class="ctrl-btn" id="btnFullscreen" aria-label="Fullscreen">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings Popover (Audio / Subtitles / Speed) -->
+        <div class="settings-menu" id="settingsMenu">
+          <div class="menu-section" id="speedSection">
+            <div class="menu-heading">Playback Speed</div>
+            <div class="speed-grid">
+              <button class="speed-opt" data-speed="0.75">0.75x</button>
+              <button class="speed-opt active" data-speed="1.0">1.0x (Normal)</button>
+              <button class="speed-opt" data-speed="1.25">1.25x</button>
+              <button class="speed-opt" data-speed="1.5">1.5x</button>
+              <button class="speed-opt" data-speed="2.0">2.0x</button>
             </div>
           </div>
 
-          <div class="controls-right">
-            <!-- Settings Menu Toggle (Audio & Subtitles) -->
-            <button class="ctrl-btn" id="btnSettings" aria-label="Settings">
-              <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-            </button>
+          <div class="menu-section" id="audioSection">
+            <div class="menu-heading">Audio Track</div>
+            <div class="menu-list" id="audioTrackList">
+              <div class="menu-empty">Default Audio</div>
+            </div>
+          </div>
 
-            <!-- Fullscreen -->
-            <button class="ctrl-btn" id="btnFullscreen" aria-label="Fullscreen">
-              <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
-            </button>
+          <div class="menu-section" id="subSection">
+            <div class="menu-heading">Subtitles</div>
+            <div class="menu-list" id="subTrackList">
+              <div class="menu-empty">Subtitles Off</div>
+            </div>
           </div>
         </div>
       </div>
+    </section>
 
-      <!-- Settings Menu Popover -->
-      <div class="settings-menu" id="settingsMenu">
-        <div class="menu-section">
-          <div class="menu-heading">Audio</div>
-          <div class="menu-list" id="audioTrackList">
-            <!-- Dynamically populated -->
-          </div>
-        </div>
-
-        <div class="menu-section">
-          <div class="menu-heading">Subtitles</div>
-          <div class="menu-list" id="subTrackList">
-            <!-- Dynamically populated -->
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Title and Metadata Section -->
-    <div class="info-section">
-      <h1 class="media-title">{{file_name}}</h1>
-      <div class="media-meta-line">{{file_size}} · {{file_format}} · {{quality_tag}}</div>
-
-      <!-- Actions -->
-      <div class="actions-container">
-        <a class="btn-download" href="{{download_url}}" download>Download file</a>
-        <div class="open-in-group">
-          <a class="btn-open-in" href="{{vlc_url}}">VLC</a>
-          <a class="btn-open-in" href="{{mx_url}}">MX Player</a>
-          <a class="btn-open-in" href="{{potplayer_url}}">PotPlayer</a>
+    <!-- Professional Media Card & Action Dashboard -->
+    <section class="media-details-card">
+      <div class="details-header">
+        <h1 class="file-headline">{{file_name}}</h1>
+        <div class="meta-pills-row">
+          <span class="meta-pill size">📁 {{file_size}}</span>
+          <span class="meta-pill format">{{file_format}}</span>
+          <span class="meta-pill quality">{{quality_tag}}</span>
+          <span class="meta-pill speed">⚡ High-Speed Direct</span>
         </div>
       </div>
 
-      <button class="copy-link-text" id="copyLinkBtn" type="button">Copy link</button>
-    </div>
+      <!-- Action Hero Row -->
+      <div class="action-hero-row">
+        <button class="action-hero-btn primary" id="heroPlayBtn">
+          <span class="btn-icon">▶</span>
+          <span>Start Playing Now</span>
+        </button>
+        <a class="action-hero-btn success" href="{{download_url}}" download>
+          <span class="btn-icon">⚡</span>
+          <span>Fast Download</span>
+        </a>
+        <button class="action-hero-btn neutral" id="copyLinkBtn">
+          <span class="btn-icon">📋</span>
+          <span>Copy Stream URL</span>
+        </button>
+      </div>
+
+      <!-- External Hardware Players Launchers -->
+      <div class="launcher-section">
+        <div class="section-title">Open in External Media Players:</div>
+        <div class="launchers-grid">
+          <a class="app-card" href="{{vlc_url}}">
+            <div class="app-icon vlc">🟠</div>
+            <div class="app-info">
+              <span class="app-name">VLC Player</span>
+              <span class="app-sub">Multi-Audio & Subs</span>
+            </div>
+          </a>
+          <a class="app-card" href="{{mx_url}}">
+            <div class="app-icon mx">🔵</div>
+            <div class="app-info">
+              <span class="app-name">MX Player</span>
+              <span class="app-sub">Hardware HW+</span>
+            </div>
+          </a>
+          <a class="app-card" href="{{potplayer_url}}">
+            <div class="app-icon pot">🟡</div>
+            <div class="app-info">
+              <span class="app-name">PotPlayer</span>
+              <span class="app-sub">PC 60fps Smooth</span>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Pro Features Info Strip -->
+      <div class="pro-features-grid">
+        <div class="feat-card">
+          <span class="feat-icon">⚡</span>
+          <div class="feat-content">
+            <h4>RAM Chunk Streaming</h4>
+            <p>Zero disk latency, instant buffer seek.</p>
+          </div>
+        </div>
+        <div class="feat-card">
+          <span class="feat-icon">🔒</span>
+          <div class="feat-content">
+            <h4>Direct Secure Delivery</h4>
+            <p>Direct encrypted stream from MTProto.</p>
+          </div>
+        </div>
+        <div class="feat-card">
+          <span class="feat-icon">🌐</span>
+          <div class="feat-content">
+            <h4>Universal Player</h4>
+            <p>Runs in Telegram Mini App, iOS & PC.</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
   </main>
 
-  <div class="toast-notice" id="toastNotice">Link copied to clipboard</div>
+  <!-- Modern Floating Toast -->
+  <div class="floating-toast" id="toastNotice">
+    <span class="toast-icon">✓</span>
+    <span class="toast-msg">Link copied to clipboard</span>
+  </div>
 
-  <!-- Injected File Object -->
+  <!-- Injected Data & Scripts -->
   <script>
     window.F = {{file_data_json}};
+    // Auto init Telegram WebApp if present
+    if (window.Telegram && window.Telegram.WebApp) {
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+      try {
+        window.Telegram.WebApp.setHeaderColor('#0B0C10');
+        window.Telegram.WebApp.setBackgroundColor('#0B0C10');
+      } catch(e) {}
+    }
   </script>
-  <!-- hls.js from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
   <script src="/static/player.js"></script>
 </body>

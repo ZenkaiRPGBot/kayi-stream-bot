@@ -106,9 +106,15 @@ def build_file_card_text(file_name: str, file_size: int, mime_type: str, watch_u
     )
 
 def build_file_markup(watch_url: str, dl_url: str, display_id: str) -> InlineKeyboardMarkup:
+    # Telegram WebApp for seamless in-app streaming
+    if watch_url.startswith("https://"):
+        watch_btn = InlineKeyboardButton(text="Watch in WebApp 🍿", web_app=types.WebAppInfo(url=watch_url), style="primary")
+    else:
+        watch_btn = InlineKeyboardButton(text="Watch Online 🍿", url=watch_url, style="primary")
+
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="Watch Online 🍿", url=watch_url, style="primary"),
+            watch_btn,
             InlineKeyboardButton(text="Fast Download ⚡", url=dl_url, style="success")
         ],
         [
@@ -386,8 +392,9 @@ async def cmd_myfiles(message: types.Message):
             f"• <b>Size:</b> <code>{size_str}</code> | {type_icon} <code>{category.title()}</code>\n"
             f"• <b>Added:</b> <code>{added_time}</code>"
         )
+        watch_item_btn = InlineKeyboardButton(text=f"Watch #{idx} 🍿", web_app=types.WebAppInfo(url=watch_url), style="primary") if watch_url.startswith("https://") else InlineKeyboardButton(text=f"Watch #{idx} 🍿", url=watch_url, style="primary")
         keyboard_rows.append([
-            InlineKeyboardButton(text=f"Watch #{idx} 🍿", url=watch_url, style="primary"),
+            watch_item_btn,
             InlineKeyboardButton(text=f"Delete #{idx} 🗑️", callback_data=f"del:ask:{disp_id}", style="danger")
         ])
 
@@ -497,9 +504,11 @@ async def send_file_info_card(message: types.Message, query_id: str):
         f"\n<b>Download URL 👇</b>\n<code>{dl_url}</code>"
     ])
 
+    info_watch_btn = InlineKeyboardButton(text="Watch in WebApp 🍿", web_app=types.WebAppInfo(url=watch_url), style="primary") if watch_url.startswith("https://") else InlineKeyboardButton(text="Watch Online 🍿", url=watch_url, style="primary")
+
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="Watch Online 🍿", url=watch_url, style="primary"),
+            info_watch_btn,
             InlineKeyboardButton(text="Fast Download ⚡", url=dl_url, style="success")
         ],
         [

@@ -6,3 +6,4 @@ __pycache__/
 cloudflared.exe
 tunnel_url.txt
 media_cache/
+*.log
