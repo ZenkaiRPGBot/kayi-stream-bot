@@ -143,6 +143,62 @@
     return `${remM}:${padS}`;
   }
 
+  // Browser download trigger (bypasses Telegram WebView sandbox)
+  function triggerBrowserDownload(url) {
+    if (!url) return;
+    triggerHaptic('medium');
+    showToast('Opening download in browser...');
+    if (tg?.openLink) {
+      try {
+        tg.openLink(url);
+        return;
+      } catch (e) {
+        console.warn('[WebApp] openLink note:', e);
+      }
+    }
+    const win = window.open(url, '_blank');
+    if (!win) {
+      window.location.href = url;
+    }
+  }
+
+  // Playback Progress Persistence (Keyed by file_unique_id or file_id)
+  let hasResumedCurrentVideo = false;
+
+  function getFileProgressKey(file) {
+    if (!file) return null;
+    const identifier = file.file_unique_id || file.file_id || `${file.name}_${file.size}`;
+    return `kayi_resume_pos_${identifier}`;
+  }
+
+  function savePlaybackProgress() {
+    if (!currentActiveFile || !mainVideo) return;
+    const cur = mainVideo.currentTime;
+    const dur = mainVideo.duration;
+    if (cur > 3 && isFinite(dur) && cur < dur - 8) {
+      const key = getFileProgressKey(currentActiveFile);
+      if (key) {
+        try {
+          localStorage.setItem(key, cur.toFixed(1));
+        } catch (_) {}
+      }
+    }
+  }
+
+  function checkAndResumeProgress(file) {
+    if (hasResumedCurrentVideo) return;
+    const key = getFileProgressKey(file);
+    if (!key) return;
+    try {
+      const saved = parseFloat(localStorage.getItem(key));
+      if (saved && saved > 3 && isFinite(mainVideo.duration) && saved < mainVideo.duration - 8) {
+        hasResumedCurrentVideo = true;
+        mainVideo.currentTime = saved;
+        showToast(`Resumed from ${formatTime(saved)}`);
+      }
+    } catch (_) {}
+  }
+
   // ==============================================================================
   // USER SETUP & ROUTING
   // ==============================================================================
@@ -193,6 +249,10 @@
     playerVideoTitle.textContent = file.name;
     btnDownloadMain.href = file.dl_url;
     btnDownloadMain.setAttribute('download', file.name);
+    btnDownloadMain.onclick = (e) => {
+      e.preventDefault();
+      triggerBrowserDownload(file.dl_url);
+    };
 
     btnCopyLinkMain.onclick = () => {
       copyToClipboard(file.stream_url);
@@ -285,9 +345,9 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             <span>Watch</span>
           </button>` : ''}
-          <a class="btn-action-secondary" href="${file.dl_url}" download="${escapeHtml(file.name)}" aria-label="Download File">
+          <button class="btn-action-secondary btn-card-download" aria-label="Download File">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-          </a>
+          </button>
           <button class="btn-more-menu" aria-label="More options">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
           </button>
@@ -296,10 +356,10 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
               <span>Watch Video</span>
             </button>
-            <a class="dropdown-item" href="${file.dl_url}" download="${escapeHtml(file.name)}">
+            <button class="dropdown-item btn-dd-download">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
               <span>Download File</span>
-            </a>
+            </button>
             <button class="dropdown-item btn-dd-copy">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
               <span>Copy Link</span>
@@ -325,6 +385,14 @@
         });
       }
 
+      const dlBtn = card.querySelector('.btn-card-download');
+      if (dlBtn) {
+        dlBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          triggerBrowserDownload(file.dl_url);
+        });
+      }
+
       const moreBtn = card.querySelector('.btn-more-menu');
       const menu = card.querySelector('.dropdown-menu-wrapper');
 
@@ -338,6 +406,12 @@
         e.stopPropagation();
         menu.classList.remove('open');
         showPlayerView(file);
+      });
+
+      card.querySelector('.btn-dd-download')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.classList.remove('open');
+        triggerBrowserDownload(file.dl_url);
       });
 
       card.querySelector('.btn-dd-copy')?.addEventListener('click', (e) => {
@@ -362,7 +436,7 @@
         if (isVideo) {
           showPlayerView(file);
         } else {
-          window.location.href = file.dl_url;
+          triggerBrowserDownload(file.dl_url);
         }
       });
 
@@ -418,6 +492,7 @@
   // ==============================================================================
 
   function loadVideoSource(file) {
+    hasResumedCurrentVideo = false;
     playerErrorOverlay.classList.remove('visible');
     playerLoadingSpinner.classList.add('visible');
     playerCenterPlay.classList.remove('hidden');
@@ -431,6 +506,7 @@
 
     mainVideo.play().then(() => {
       playerCenterPlay.classList.add('hidden');
+      resetControlsAutohide();
     }).catch(() => {
       // Browser autoplay restriction before user gesture
       playerLoadingSpinner.classList.remove('visible');
@@ -438,17 +514,71 @@
     });
   }
 
-  function togglePlayState() {
+  function startPlayback() {
     if (mainVideo.paused || mainVideo.ended) {
-      mainVideo.play().catch((err) => console.log('Playback error:', err));
-    } else {
-      mainVideo.pause();
+      mainVideo.play().then(() => {
+        playerCenterPlay.classList.add('hidden');
+        resetControlsAutohide();
+      }).catch((err) => {
+        console.warn('[Player] Play error:', err);
+      });
     }
     triggerHaptic('light');
   }
 
-  playerCenterPlay.addEventListener('click', togglePlayState);
-  btnPlay.addEventListener('click', togglePlayState);
+  function togglePlayState() {
+    if (mainVideo.paused || mainVideo.ended) {
+      startPlayback();
+    } else {
+      mainVideo.pause();
+      playerCenterPlay.classList.remove('hidden');
+      playerControlsOverlay.classList.remove('autohide');
+    }
+    triggerHaptic('light');
+  }
+
+  // Center Red Play Button
+  playerCenterPlay.addEventListener('click', (e) => {
+    e.stopPropagation();
+    startPlayback();
+  });
+
+  playerCenterPlay.addEventListener('touchend', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    startPlayback();
+  });
+
+  btnPlay.addEventListener('click', (e) => {
+    e.stopPropagation();
+    togglePlayState();
+  });
+
+  // Tapping anywhere inside the player canvas:
+  // Shows/toggles player controls & settings without interfering with buttons!
+  function handlePlayerSurfaceClick(e) {
+    if (e.target.closest('.ctrl-btn') || 
+        e.target.closest('.btn-tracks-switcher') || 
+        e.target.closest('.timeline-track-container') ||
+        e.target.closest('#playerCenterPlay') ||
+        e.target.closest('#playerErrorOverlay')) {
+      return;
+    }
+
+    if (playerControlsOverlay.classList.contains('autohide')) {
+      resetControlsAutohide();
+    } else {
+      if (!mainVideo.paused) {
+        playerControlsOverlay.classList.add('autohide');
+        clearTimeout(hideControlsTimer);
+      } else {
+        resetControlsAutohide();
+      }
+    }
+    triggerHaptic('light');
+  }
+
+  playerCanvas.addEventListener('click', handlePlayerSurfaceClick);
 
   mainVideo.addEventListener('play', () => {
     playerCenterPlay.classList.add('hidden');
@@ -472,6 +602,19 @@
     playerLoadingSpinner.classList.remove('visible');
   });
 
+  mainVideo.addEventListener('loadedmetadata', () => {
+    if (currentActiveFile) {
+      checkAndResumeProgress(currentActiveFile);
+    }
+  });
+
+  mainVideo.addEventListener('canplay', () => {
+    if (currentActiveFile && !hasResumedCurrentVideo) {
+      checkAndResumeProgress(currentActiveFile);
+    }
+  });
+
+  let lastProgressSaveTime = 0;
   mainVideo.addEventListener('timeupdate', () => {
     const cur = mainVideo.currentTime;
     const dur = mainVideo.duration;
@@ -480,6 +623,22 @@
     if (dur && isFinite(dur)) {
       const pct = (cur / dur) * 100;
       timelineFill.style.width = pct + '%';
+    }
+
+    // Save playback position periodically
+    const now = Date.now();
+    if (now - lastProgressSaveTime > 2500) {
+      lastProgressSaveTime = now;
+      savePlaybackProgress();
+    }
+  });
+
+  mainVideo.addEventListener('ended', () => {
+    if (currentActiveFile) {
+      const key = getFileProgressKey(currentActiveFile);
+      if (key) {
+        try { localStorage.removeItem(key); } catch (_) {}
+      }
     }
   });
 
@@ -498,46 +657,90 @@
   });
 
   // Skips
-  btnRewind.addEventListener('click', () => {
+  btnRewind.addEventListener('click', (e) => {
+    e.stopPropagation();
     mainVideo.currentTime = Math.max(0, mainVideo.currentTime - 10);
+    resetControlsAutohide();
     triggerHaptic('light');
   });
 
-  btnForward.addEventListener('click', () => {
+  btnForward.addEventListener('click', (e) => {
+    e.stopPropagation();
     mainVideo.currentTime = Math.min(mainVideo.duration || Infinity, mainVideo.currentTime + 10);
+    resetControlsAutohide();
     triggerHaptic('light');
   });
 
-  // Timeline scrub
-  timelineContainer.addEventListener('click', (e) => {
+  // Timeline scrub (Smooth touch & mouse drag)
+  function scrubTimeline(e) {
     const rect = timelineContainer.getBoundingClientRect();
-    const pos = (e.clientX - rect.left) / rect.width;
-    if (isFinite(mainVideo.duration)) {
+    const clientX = e.touches && e.touches.length > 0 ? e.touches[0].clientX : e.clientX;
+    const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    if (isFinite(mainVideo.duration) && mainVideo.duration > 0) {
       mainVideo.currentTime = pos * mainVideo.duration;
-      timelineFill.style.width = pos * 100 + '%';
+      timelineFill.style.width = (pos * 100) + '%';
     }
-    triggerHaptic('light');
+  }
+
+  let isScrubbing = false;
+  timelineContainer.addEventListener('mousedown', (e) => {
+    e.stopPropagation();
+    isScrubbing = true;
+    scrubTimeline(e);
+  });
+
+  timelineContainer.addEventListener('touchstart', (e) => {
+    e.stopPropagation();
+    isScrubbing = true;
+    scrubTimeline(e);
+  }, { passive: true });
+
+  window.addEventListener('mousemove', (e) => {
+    if (isScrubbing) scrubTimeline(e);
+  });
+
+  window.addEventListener('touchmove', (e) => {
+    if (isScrubbing) scrubTimeline(e);
+  }, { passive: true });
+
+  window.addEventListener('mouseup', () => {
+    if (isScrubbing) {
+      isScrubbing = false;
+      savePlaybackProgress();
+    }
+  });
+
+  window.addEventListener('touchend', () => {
+    if (isScrubbing) {
+      isScrubbing = false;
+      savePlaybackProgress();
+    }
   });
 
   // Volume / Mute
-  btnMute.addEventListener('click', () => {
+  btnMute.addEventListener('click', (e) => {
+    e.stopPropagation();
     mainVideo.muted = !mainVideo.muted;
     iconVol.style.display = mainVideo.muted ? 'none' : 'block';
     iconMute.style.display = mainVideo.muted ? 'block' : 'none';
+    resetControlsAutohide();
     triggerHaptic('light');
   });
 
   // Speed
-  btnSpeed.addEventListener('click', () => {
+  btnSpeed.addEventListener('click', (e) => {
+    e.stopPropagation();
     currentSpeedIndex = (currentSpeedIndex + 1) % SPEED_OPTIONS.length;
     const spd = SPEED_OPTIONS[currentSpeedIndex];
     mainVideo.playbackRate = spd;
     speedLabel.textContent = `${spd}x`;
     showToast(`Speed: ${spd}x`);
+    resetControlsAutohide();
   });
 
   // PiP & Fullscreen
-  btnPip.addEventListener('click', async () => {
+  btnPip.addEventListener('click', async (e) => {
+    e.stopPropagation();
     try {
       if (document.pictureInPictureElement) {
         await document.exitPictureInPicture();
@@ -547,7 +750,8 @@
     } catch (_) {}
   });
 
-  btnFullscreen.addEventListener('click', () => {
+  btnFullscreen.addEventListener('click', (e) => {
+    e.stopPropagation();
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
     } else if (playerCanvas.requestFullscreen) {
@@ -564,7 +768,7 @@
         if (!trackSheetContainer.classList.contains('active')) {
           playerControlsOverlay.classList.add('autohide');
         }
-      }, 3000);
+      }, 3500);
     }
   }
 
@@ -667,6 +871,7 @@
     subTracks.forEach((sub, i) => {
       const item = document.createElement('div');
       item.className = `track-item-row ${sub.index === activeSubIndex ? 'selected' : ''}`;
+      item.dataset.subIndex = sub.index;
       const name = sub.language_name || sub.title || `Subtitle ${i + 1}`;
       const desc = `${sub.codec?.toUpperCase() || 'WebVTT'} • ${sub.forced ? 'Forced' : 'Full'}`;
 
@@ -689,16 +894,26 @@
   function selectSubtitleTrack(index, subObj) {
     activeSubIndex = index;
 
-    // Remove existing track elements
-    mainVideo.querySelectorAll('track').forEach((t) => t.remove());
-
-    subTracksList.querySelectorAll('.track-item-row').forEach((row, i) => {
-      if (index === -1) {
-        row.classList.toggle('selected', i === 0);
-      } else if (currentTracksData?.subtitles && currentTracksData.subtitles[i - 1]) {
-        row.classList.toggle('selected', currentTracksData.subtitles[i - 1].index === index);
+    // 1. Correctly update selected class on all rows (Off item included!)
+    const allRows = subTracksList.querySelectorAll('.track-item-row');
+    allRows.forEach((row, i) => {
+      if (i === 0) {
+        // Off button: selected ONLY when index === -1
+        row.classList.toggle('selected', index === -1);
+      } else {
+        const rowIdx = parseInt(row.dataset.subIndex, 10);
+        row.classList.toggle('selected', rowIdx === index);
       }
     });
+
+    // 2. Remove existing track elements
+    mainVideo.querySelectorAll('track').forEach((t) => t.remove());
+
+    if (mainVideo.textTracks && mainVideo.textTracks.length > 0) {
+      for (let j = 0; j < mainVideo.textTracks.length; j++) {
+        mainVideo.textTracks[j].mode = 'disabled';
+      }
+    }
 
     if (index === -1 || !subObj) {
       showToast('Subtitles: Off');
@@ -706,25 +921,39 @@
       return;
     }
 
-    // Attach WebVTT track
+    // 3. Attach WebVTT track
     const trackEl = document.createElement('track');
     trackEl.kind = 'subtitles';
-    trackEl.label = subObj.title || subObj.language_name || 'Subtitles';
+    trackEl.label = subObj.language_name || subObj.title || 'Subtitles';
     trackEl.srclang = subObj.language || 'en';
     trackEl.src = `/api/media/${currentActiveFile.display_id || currentActiveFile.id}/subs/${index}.vtt`;
     trackEl.default = true;
 
-    mainVideo.appendChild(trackEl);
-
-    trackEl.addEventListener('load', () => {
-      if (mainVideo.textTracks && mainVideo.textTracks.length > 0) {
-        for (let j = 0; j < mainVideo.textTracks.length; j++) {
-          mainVideo.textTracks[j].mode = 'showing';
+    function activateTrackShowing() {
+      try {
+        if (trackEl.track) {
+          trackEl.track.mode = 'showing';
         }
+        if (mainVideo.textTracks && mainVideo.textTracks.length > 0) {
+          for (let j = 0; j < mainVideo.textTracks.length; j++) {
+            const tt = mainVideo.textTracks[j];
+            if (tt.label === trackEl.label || tt.language === trackEl.srclang) {
+              tt.mode = 'showing';
+            } else {
+              tt.mode = 'disabled';
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[Subtitles] Mode note:', e);
       }
-    });
+    }
 
-    showToast(`Subtitles: ${subObj.language_name || subObj.title}`);
+    trackEl.addEventListener('load', activateTrackShowing);
+    mainVideo.appendChild(trackEl);
+    activateTrackShowing();
+
+    showToast(`Subtitles: ${subObj.language_name || subObj.title || 'Enabled'}`);
     triggerHaptic('select');
   }
 
@@ -742,7 +971,10 @@
     resetControlsAutohide();
   }
 
-  btnTracks.addEventListener('click', openTrackSheet);
+  btnTracks.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openTrackSheet();
+  });
   btnCloseTrackSheet.addEventListener('click', closeTrackSheet);
   trackModalBackdrop.addEventListener('click', closeTrackSheet);
 

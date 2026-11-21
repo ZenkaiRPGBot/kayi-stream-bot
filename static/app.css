@@ -332,7 +332,7 @@ a {
   border: none;
   background: transparent;
   outline: none;
-  font-size: 14px;
+  font-size: 16px;
   color: var(--text-primary);
 }
 
@@ -698,27 +698,35 @@ video::cue {
 /* Center Big Play Button */
 .player-center-play {
   position: absolute;
-  width: 60px;
-  height: 60px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
-  background-color: rgba(220, 38, 38, 0.92);
+  background-color: rgba(220, 38, 38, 0.94);
   color: #FFFFFF;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
-  transition: all 0.15s ease;
-  z-index: 20;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s ease, background-color 0.15s ease, opacity 0.2s ease;
+  z-index: 35;
+  cursor: pointer;
+  pointer-events: auto;
+  border: 2px solid rgba(255, 255, 255, 0.25);
 }
 
 .player-center-play:hover {
   background-color: var(--brand-red);
-  transform: scale(1.05);
+  transform: scale(1.08);
+}
+
+.player-center-play:active {
+  transform: scale(0.95);
 }
 
 .player-center-play.hidden {
   opacity: 0;
   pointer-events: none;
+  visibility: hidden;
 }
 
 /* Loading Overlay */
@@ -810,25 +818,28 @@ video::cue {
 /* Progress Scrub Timeline */
 .timeline-track-container {
   width: 100%;
-  height: 18px;
+  height: 26px;
   display: flex;
   align-items: center;
   cursor: pointer;
   position: relative;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+  touch-action: none;
+  user-select: none;
 }
 
 .timeline-track-rail {
   width: 100%;
   height: 4px;
-  background-color: rgba(255, 255, 255, 0.25);
+  background-color: rgba(255, 255, 255, 0.28);
   border-radius: 2px;
   position: relative;
   overflow: hidden;
   transition: height 0.12s ease;
 }
 
-.timeline-track-container:hover .timeline-track-rail {
+.timeline-track-container:hover .timeline-track-rail,
+.timeline-track-container:active .timeline-track-rail {
   height: 6px;
 }
 
@@ -838,7 +849,7 @@ video::cue {
   top: 0;
   bottom: 0;
   width: 0%;
-  background-color: rgba(255, 255, 255, 0.4);
+  background-color: rgba(255, 255, 255, 0.45);
 }
 
 .timeline-track-fill {
@@ -855,7 +866,7 @@ video::cue {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   color: #FFFFFF;
 }
 
@@ -863,7 +874,7 @@ video::cue {
 .controls-group-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .ctrl-btn {
@@ -875,18 +886,24 @@ video::cue {
   align-items: center;
   justify-content: center;
   transition: all 0.12s ease;
+  flex-shrink: 0;
 }
 
 .ctrl-btn:hover {
   background-color: rgba(255, 255, 255, 0.15);
 }
 
+.ctrl-btn:active {
+  transform: scale(0.92);
+}
+
 .time-display-label {
   font-family: var(--font-mono);
   font-size: 12px;
   color: rgba(255, 255, 255, 0.9);
-  margin-left: 4px;
+  margin-left: 2px;
   user-select: none;
+  white-space: nowrap;
 }
 
 /* Prominent Audio & Subtitles Pill */
@@ -895,18 +912,24 @@ video::cue {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background-color: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 9999px;
   font-size: 12px;
   font-weight: 600;
   color: #FFFFFF;
   transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-tracks-switcher:hover {
-  background-color: rgba(255, 255, 255, 0.25);
-  border-color: rgba(255, 255, 255, 0.35);
+  background-color: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.btn-tracks-switcher:active {
+  transform: scale(0.95);
 }
 
 .tracks-badge-dot {
@@ -914,6 +937,42 @@ video::cue {
   height: 6px;
   border-radius: 50%;
   background-color: var(--brand-red);
+}
+
+@media (max-width: 520px) {
+  .controls-bottom-bar {
+    gap: 4px;
+  }
+  .controls-group-left,
+  .controls-group-right {
+    gap: 2px;
+  }
+  .ctrl-btn {
+    width: 32px;
+    height: 32px;
+  }
+  .time-display-label {
+    font-size: 11px;
+  }
+  .btn-tracks-switcher {
+    padding: 5px 8px;
+    font-size: 11px;
+    gap: 4px;
+  }
+}
+
+@media (max-width: 380px) {
+  #btnPip {
+    display: none;
+  }
+  #btnRewind, #btnForward {
+    width: 28px;
+    height: 28px;
+  }
+  .player-center-play {
+    width: 52px;
+    height: 52px;
+  }
 }
 
 /* Below Player Action Buttons */
@@ -932,7 +991,7 @@ video::cue {
 
 .player-btn-main {
   flex: 1;
-  height: 44px;
+  min-height: 44px;
   border-radius: var(--radius-btn);
   font-size: 14px;
   font-weight: 600;
@@ -941,26 +1000,40 @@ video::cue {
   justify-content: center;
   gap: 8px;
   transition: all 0.15s ease;
+  user-select: none;
+  cursor: pointer;
 }
 
 .player-btn-main.primary {
   background-color: var(--brand-red);
   color: #FFFFFF;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+  border: 1px solid rgba(220, 38, 38, 0.4);
 }
 
 .player-btn-main.primary:hover {
   background-color: var(--brand-red-hover);
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35);
+}
+
+.player-btn-main.primary:active {
+  transform: scale(0.97);
 }
 
 .player-btn-main.secondary {
   background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
+  box-shadow: var(--shadow-subtle);
 }
 
 .player-btn-main.secondary:hover {
   background-color: var(--bg-hover);
   border-color: #CBD5E1;
+}
+
+.player-btn-main.secondary:active {
+  transform: scale(0.97);
 }
 
 /* ==============================================================================

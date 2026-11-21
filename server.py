@@ -117,6 +117,8 @@ async def handle_api_user_files(request: web.Request) -> web.Response:
             "token": f["token"],
             "name": f["file_name"],
             "size": f["file_size"],
+            "file_id": f.get("file_id") or "",
+            "file_unique_id": f.get("file_unique_id") or "",
             "size_fmt": format_file_size(f["file_size"]),
             "mime_type": f["mime_type"],
             "category": get_media_category(f["mime_type"], f["file_name"]),
@@ -165,6 +167,8 @@ async def handle_api_file_info(request: web.Request) -> web.Response:
             "token": record["token"],
             "name": record["file_name"],
             "size": record["file_size"],
+            "file_id": record.get("file_id") or "",
+            "file_unique_id": record.get("file_unique_id") or "",
             "size_fmt": format_file_size(record["file_size"]),
             "mime_type": record["mime_type"],
             "category": get_media_category(record["mime_type"], record["file_name"]),
@@ -212,6 +216,8 @@ async def handle_watch(request: web.Request) -> web.Response:
     initial_file = {
         "id": f_id,
         "display_id": disp_id,
+        "file_id": record.get("file_id") or "",
+        "file_unique_id": record.get("file_unique_id") or "",
         "name": file_name,
         "size": file_size,
         "size_fmt": file_size_fmt,
@@ -272,28 +278,34 @@ async def handle_get_tracks(request: web.Request) -> web.Response:
 async def handle_get_subtitle(request: web.Request) -> web.Response:
     identifier = request.match_info.get("identifier")
     index_str = request.match_info.get("index")
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Cache-Control": "public, max-age=3600"
+    }
     try:
         stream_index = int(index_str)
     except Exception:
-        return web.Response(text="Invalid stream index", status=400)
+        return web.Response(text="Invalid stream index", status=400, headers=cors_headers)
 
     record = await db.get_file_by_id_or_token(identifier)
     if not record:
-        return web.Response(text="File not found", status=404)
+        return web.Response(text="File not found", status=404, headers=cors_headers)
 
     f_id = record["id"]
     local_url = f"http://127.0.0.1:{PORT}/dl/{f_id}"
 
     vtt_path = await tracks.extract_subtitle(f_id, local_url, stream_index)
     if not vtt_path or not os.path.exists(vtt_path):
-        return web.Response(text="WEBVTT\n\n", content_type="text/vtt", charset="utf-8")
+        return web.Response(text="WEBVTT\n\n", content_type="text/vtt", charset="utf-8", headers=cors_headers)
 
     try:
         with open(vtt_path, "r", encoding="utf-8", errors="ignore") as f:
             vtt_content = f.read()
-        return web.Response(text=vtt_content, content_type="text/vtt", charset="utf-8")
+        return web.Response(text=vtt_content, content_type="text/vtt", charset="utf-8", headers=cors_headers)
     except Exception as e:
-        return web.Response(text="WEBVTT\n\n", content_type="text/vtt", charset="utf-8")
+        return web.Response(text="WEBVTT\n\n", content_type="text/vtt", charset="utf-8", headers=cors_headers)
 
 async def handle_hls_file(request: web.Request) -> web.Response:
     identifier = request.match_info.get("identifier")
