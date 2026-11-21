@@ -42,6 +42,7 @@
   const playerCanvas = document.getElementById('playerCanvas');
   const playerLoadingSpinner = document.getElementById('playerLoadingSpinner');
   const playerErrorOverlay = document.getElementById('playerErrorOverlay');
+  const btnExitFullscreen = document.getElementById('btnExitFullscreen');
 
   // Player Bottom Action Buttons
   const btnDownloadMain = document.getElementById('btnDownloadMain');
@@ -204,12 +205,17 @@
   function setupTelegramBackButton() {
     if (!tg?.BackButton) return;
     tg.BackButton.onClick(() => {
+      if (isFullscreenActive()) {
+        exitFullscreenMode();
+        return;
+      }
       showDashboardView();
       triggerHaptic('select');
     });
   }
 
   function showDashboardView() {
+    exitFullscreenMode();
     viewDashboard.classList.add('active');
     viewPlayer.classList.remove('active');
     closeTrackSheet();
@@ -1144,6 +1150,11 @@
       const activeEl = (moviPlayer && moviPlayer.style.display !== 'none') ? moviPlayer : nativeFallback;
       if (!activeEl) return;
 
+      if (e.code === 'Escape' && isFullscreenActive()) {
+        exitFullscreenMode();
+        return;
+      }
+
       if (e.code === 'Space') {
         e.preventDefault();
         if (activeEl.paused) {
@@ -1156,6 +1167,104 @@
       } else if (e.code === 'ArrowRight') {
         activeEl.currentTime = Math.min(activeEl.duration || Infinity, activeEl.currentTime + 10);
       }
+    }
+  });
+
+  // ==============================================================================
+  // FULLSCREEN MANAGEMENT (Native API + CSS Pseudo-Fullscreen for Mobile/Telegram)
+  // ==============================================================================
+
+  function isFullscreenActive() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement || document.body.classList.contains('is-fullscreen'));
+  }
+
+  function toggleFullscreen() {
+    if (isFullscreenActive()) {
+      exitFullscreenMode();
+    } else {
+      enterFullscreenMode();
+    }
+  }
+
+  function enterFullscreenMode() {
+    const elem = playerCanvas;
+    if (!elem) return;
+
+    if (tg?.expand) {
+      try { tg.expand(); } catch (_) {}
+    }
+
+    if (elem.requestFullscreen) {
+      elem.requestFullscreen().then(() => {
+        document.body.classList.add('is-fullscreen');
+        triggerHaptic('medium');
+      }).catch(() => {
+        fallbackPseudoFullscreen();
+      });
+    } else if (elem.webkitRequestFullscreen) {
+      elem.webkitRequestFullscreen();
+      document.body.classList.add('is-fullscreen');
+      triggerHaptic('medium');
+    } else {
+      fallbackPseudoFullscreen();
+    }
+
+    try {
+      if (screen.orientation && typeof screen.orientation.lock === 'function') {
+        screen.orientation.lock('landscape').catch(() => {});
+      }
+    } catch (_) {}
+  }
+
+  function fallbackPseudoFullscreen() {
+    document.body.classList.add('is-fullscreen', 'css-pseudo-fs');
+    triggerHaptic('medium');
+  }
+
+  function exitFullscreenMode() {
+    if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    }
+    document.body.classList.remove('is-fullscreen', 'css-pseudo-fs');
+    try {
+      if (screen.orientation && typeof screen.orientation.unlock === 'function') {
+        screen.orientation.unlock();
+      }
+    } catch (_) {}
+    triggerHaptic('light');
+  }
+
+  if (btnExitFullscreen) {
+    btnExitFullscreen.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exitFullscreenMode();
+    });
+  }
+
+  // Intercept Movi Player internal fullscreen button request
+  if (moviPlayer) {
+    moviPlayer.addEventListener('movi-fullscreen-request', (e) => {
+      e.preventDefault();
+      toggleFullscreen();
+    });
+  }
+
+  // Handle native browser fullscreen change events
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) {
+      document.body.classList.remove('is-fullscreen', 'css-pseudo-fs');
+    } else {
+      document.body.classList.add('is-fullscreen');
+    }
+  });
+
+  document.addEventListener('webkitfullscreenchange', () => {
+    if (!document.webkitFullscreenElement) {
+      document.body.classList.remove('is-fullscreen', 'css-pseudo-fs');
+    } else {
+      document.body.classList.add('is-fullscreen');
     }
   });
 

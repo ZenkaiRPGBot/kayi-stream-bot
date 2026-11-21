@@ -682,6 +682,93 @@ a {
   background-color: #000000;
 }
 
+/* ==============================================================================
+   FULLSCREEN STYLING (Native Fullscreen API & Mobile CSS Pseudo-Fullscreen)
+   ============================================================================== */
+
+:fullscreen,
+:-webkit-full-screen,
+body.is-fullscreen {
+  overflow: hidden !important;
+}
+
+:fullscreen #playerCanvas,
+:-webkit-full-screen #playerCanvas,
+body.is-fullscreen #playerCanvas,
+:fullscreen .player-canvas-container,
+:-webkit-full-screen .player-canvas-container,
+body.is-fullscreen .player-canvas-container {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  aspect-ratio: auto !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  z-index: 999999 !important;
+  background-color: #000000 !important;
+}
+
+:fullscreen movi-player,
+:-webkit-full-screen movi-player,
+body.is-fullscreen movi-player,
+:fullscreen .player-video-element,
+:-webkit-full-screen .player-video-element,
+body.is-fullscreen .player-video-element {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  aspect-ratio: auto !important;
+  object-fit: contain !important;
+}
+
+/* Exit Fullscreen Floating Button */
+.player-fs-exit-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background-color: rgba(18, 20, 24, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #FFFFFF;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 9999999;
+  transition: opacity 0.2s ease, transform 0.15s ease, background-color 0.15s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.player-fs-exit-btn:hover {
+  background-color: rgba(220, 38, 38, 0.95);
+  transform: scale(1.08);
+}
+
+.player-fs-exit-btn:active {
+  transform: scale(0.92);
+}
+
+:fullscreen .player-fs-exit-btn,
+:-webkit-full-screen .player-fs-exit-btn,
+body.is-fullscreen .player-fs-exit-btn {
+  display: flex !important;
+}
+
 /* Universal Movi Player WASM Element */
 movi-player {
   width: 100%;
