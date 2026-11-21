@@ -181,57 +181,80 @@ async def build_stats_view(bot: Bot, tab: str = "overview") -> tuple[str, Inline
 # BUTTONED HELP GUIDE BUILDER (Pure Guide, No Command Shortcuts)
 # ==============================================================================
 
-def build_help_view(tab: str = "mobile") -> tuple[str, InlineKeyboardMarkup]:
-    if tab == "desktop":
+def build_help_view(tab: str = "about") -> tuple[str, InlineKeyboardMarkup]:
+    if tab == "howto":
         text = (
-            f"<b>{BRAND_NAME} — PC, Mac & Smart TV Guide 💻</b>\n\n"
-            "<b>PC / Mac (VLC Media Player):</b>\n"
-            "1. Copy your Direct Stream link from the bot.\n"
-            "2. In VLC: Click <b>Media ➔ Open Network Stream</b> (or <code>Ctrl + N</code>).\n"
-            "3. Paste the URL and press Play. Instant seek and full audio/sub selection!\n\n"
-            "<b>PotPlayer (Windows):</b>\n"
-            "• Press <code>Ctrl + U</code>, paste the stream link, and enjoy seamless playback.\n\n"
-            "<b>Smart TV & Kodi:</b>\n"
-            "• Open the VLC app on Android TV or enter the stream URL into Kodi Network Stream."
+            f"<b>{BRAND_NAME} — How to Use 🚀</b>\n\n"
+            "<b>3 Easy Steps to Stream Any File:</b>\n"
+            "1. <b>Send or Forward:</b> Send any video, anime, song, or document to the bot.\n"
+            "2. <b>Get Your Links:</b> The bot instantly generates your Web Player & Direct Download URLs.\n"
+            "3. <b>Stream or Download:</b>\n"
+            "   • Tap <b>Watch Online 🍿</b> to stream in browser.\n"
+            "   • Tap <b>Fast Download ⚡</b> for multi-thread high-speed downloading.\n"
+            "   • Tap <b>Copy Stream 📋</b> or <b>Copy Download 📋</b> for 1-tap clipboard copying.\n\n"
+            "<b>Link Management:</b>\n"
+            "• Tap <b>File Details ℹ️</b> to inspect file metadata.\n"
+            "• Tap <b>Delete Link 🗑️</b> to permanently remove your stream link anytime."
         )
-    elif tab == "web":
+    elif tab == "commands":
         text = (
-            f"<b>{BRAND_NAME} — Web Streaming & Downloads 🌐</b>\n\n"
-            "<b>Web Player Features:</b>\n"
-            "• Tap <b>Watch Online 🍿</b> to open our custom browser player.\n"
-            "• Native HTML5 streaming with instant seek and zero buffering.\n"
-            "• Works on Chrome, Safari, Edge, Firefox, and mobile browsers.\n\n"
-            "<b>High-Speed Direct Downloads:</b>\n"
-            "• Tap <b>Fast Download ⚡</b> or copy the Direct Download URL.\n"
-            "• Supports download managers (IDM, 1DM, ADM) with multi-threaded chunk acceleration."
+            f"<b>{BRAND_NAME} — Commands Guide ⌨️</b>\n\n"
+            "<b>Available Commands:</b>\n"
+            "• <code>/start</code> — Welcome screen, format support & quick start.\n"
+            "• <code>/myfiles</code> — View all your active streaming links with action buttons.\n"
+            "• <code>/info &lt;ID&gt;</code> — Detailed file metadata (e.g. <code>/info 21112026001</code>).\n"
+            "• <code>/ping</code> — Server latency check and uptime in IST.\n"
+            "• <code>/help</code> — Open this interactive comprehensive help menu.\n\n"
+            "<i>Note: Admin commands (/files, /stats, /usage) are strictly restricted to the bot owner.</i>"
         )
-    else:  # mobile
+    elif tab == "players":
         text = (
-            f"<b>{BRAND_NAME} — Mobile Setup Guide 📱</b>\n\n"
+            f"<b>{BRAND_NAME} — Apps & External Players 📱</b>\n\n"
             "<b>Android Devices:</b>\n"
-            "• Recommended Apps: <b>MX Player</b> or <b>VLC for Android</b>.\n"
-            "• In MX Player/VLC: Open <b>Network Stream</b> and paste the link.\n"
-            "• Supports multiple audio tracks (Dual Audio/Multi) and embedded subtitles (SRT/ASS).\n\n"
+            "• Recommended: <b>MX Player</b> or <b>VLC for Android</b>.\n"
+            "• Open <i>Network Stream</i> and paste your link for dual audio & anime subtitles.\n\n"
             "<b>iPhone / iPad (iOS):</b>\n"
-            "• Watch directly in <b>Safari</b> with native picture-in-picture.\n"
-            "• For MKV videos with multiple subtitle tracks, use <b>VLC for Mobile</b> or <b>Outplayer</b>."
+            "• Watch directly in <b>Safari</b> with native picture-in-picture, or open in <b>VLC / Outplayer</b>.\n\n"
+            "<b>PC / Mac:</b>\n"
+            "• <b>VLC Media Player:</b> Press <code>Ctrl + N</code> (or <code>Cmd + N</code>) and paste the link.\n"
+            "• <b>PotPlayer (Windows):</b> Press <code>Ctrl + U</code> for instant hardware decoding.\n\n"
+            "<b>Smart TV & Kodi:</b>\n"
+            "• Use the VLC app on Android TV or open network stream in Kodi."
+        )
+    else:  # about
+        text = (
+            f"<b>About {BRAND_NAME} 📖</b>\n\n"
+            "<b>What is this Bot?</b>\n"
+            "Kayi File to Link is a high-speed cloud streaming bridge that converts "
+            "any Telegram media file into a <b>direct web link</b>.\n\n"
+            "<b>Why use it?</b>\n"
+            "• <b>No Telegram App Needed:</b> Friends and viewers can watch your files in their browser without downloading Telegram.\n"
+            "• <b>Zero-Disk Streaming:</b> Streams directly from Telegram memory chunks — no slow disk writes.\n"
+            "• <b>Supports Large Files:</b> Handles video & document files up to <b>2GB / 4GB</b>.\n"
+            "• <b>Multi-Format Support:</b> MKV, MP4, WebM, MP3, FLAC, PDF, ZIP, and more.\n"
+            "• <b>Link Lifetime:</b> Links stay active for 24 hours."
         )
 
-    tab_mobile = InlineKeyboardButton(
-        text="• 📱 Mobile •" if tab == "mobile" else "📱 Mobile",
-        callback_data="help:tab:mobile"
+    btn_about = InlineKeyboardButton(
+        text="• 📖 About •" if tab == "about" else "📖 About",
+        callback_data="help:tab:about"
     )
-    tab_desktop = InlineKeyboardButton(
-        text="• 💻 PC / TV •" if tab == "desktop" else "💻 PC / TV",
-        callback_data="help:tab:desktop"
+    btn_howto = InlineKeyboardButton(
+        text="• 🚀 How to Use •" if tab == "howto" else "🚀 How to Use",
+        callback_data="help:tab:howto"
     )
-    tab_web = InlineKeyboardButton(
-        text="• 🌐 Web Player •" if tab == "web" else "🌐 Web Player",
-        callback_data="help:tab:web"
+    btn_commands = InlineKeyboardButton(
+        text="• ⌨️ Commands •" if tab == "commands" else "⌨️ Commands",
+        callback_data="help:tab:commands"
+    )
+    btn_players = InlineKeyboardButton(
+        text="• 📱 Players •" if tab == "players" else "📱 Players",
+        callback_data="help:tab:players"
     )
 
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [tab_mobile, tab_desktop, tab_web]
+        [btn_about, btn_howto],
+        [btn_commands, btn_players]
     ])
     return text, markup
 
@@ -321,7 +344,7 @@ async def cmd_start(message: types.Message):
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="My Files 📂", callback_data="user:myfiles", style="primary"),
-            InlineKeyboardButton(text="Help & Player Guide 📖", callback_data="help:tab:mobile")
+            InlineKeyboardButton(text="Help & Guide 📖", callback_data="help:tab:about")
         ]
     ])
 
@@ -356,8 +379,13 @@ async def cmd_myfiles(message: types.Message):
         category = get_media_category(f["mime_type"], name)
         type_icon = "🎬" if category == "video" else ("🎵" if category == "audio" else ("📄" if category == "pdf" else "📁"))
         watch_url = f"{srv_url}/watch/{disp_id}"
+        added_time = format_date_str(f["created_at"])
 
-        lines.append(f"<b>{idx}. {html.escape(name)}</b>\n• <b>Size:</b> <code>{size_str}</code> | {type_icon} <code>{category.title()}</code>")
+        lines.append(
+            f"<b>{idx}. {html.escape(name)}</b>\n"
+            f"• <b>Size:</b> <code>{size_str}</code> | {type_icon} <code>{category.title()}</code>\n"
+            f"• <b>Added:</b> <code>{added_time}</code>"
+        )
         keyboard_rows.append([
             InlineKeyboardButton(text=f"Watch #{idx} 🍿", url=watch_url, style="primary"),
             InlineKeyboardButton(text=f"Delete #{idx} 🗑️", callback_data=f"del:ask:{disp_id}", style="danger")
