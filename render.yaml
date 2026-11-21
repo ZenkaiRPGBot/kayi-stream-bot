@@ -3,16 +3,27 @@ services:
     name: kayi-stream-bot
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    region: frankfurt
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: python -u bot.py
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: PYTHONUNBUFFERED
+        value: "1"
       - key: BOT_TOKEN
         sync: false
-      - key: SERVER_URL
+      - key: API_ID
         sync: false
-      - key: PING_URL
+      - key: API_HASH
         sync: false
       - key: OWNER_ID
         value: "986380678"
       - key: LOG_CHANNEL_ID
         value: "-1004495645007"
+      - key: BRAND_NAME
+        value: "Kayi File to Link"
+      - key: BOT_USERNAME
+        value: "@KayiStreamBot"
+      - key: CHANNEL_USERNAME
+        value: "@KayiBots"
