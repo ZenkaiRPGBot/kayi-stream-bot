@@ -1,7 +1,7 @@
 import aiosqlite
 import os
 from datetime import datetime, timezone, timedelta
-from config import LINK_EXPIRY_HOURS
+from config import LINK_EXPIRY_HOURS, IST
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "stream.db")
 
@@ -34,11 +34,29 @@ async def init_db():
                 uploaded_at TIMESTAMP
             )
         """)
+        # Indexes for ultra-fast deduplication & user lookups
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_files_unique_id ON files (file_unique_id);")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_files_user ON files (user_id, id DESC);")
         await db.commit()
+
+async def find_file_by_unique_id(file_unique_id: str) -> dict | None:
+    """Checks if exact same file is already registered and active (deduplication cache)."""
+    if not file_unique_id:
+        return None
+    now_iso = datetime.now(IST).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM files 
+            WHERE file_unique_id = ? AND expires_at > ?
+            ORDER BY id DESC LIMIT 1
+        """, (file_unique_id, now_iso)) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
 
 async def save_file_record(token: str, user_id: int, file_id: str, file_unique_id: str,
                            file_name: str, file_size: int, mime_type: str) -> dict:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(IST)
     expires = now + timedelta(hours=LINK_EXPIRY_HOURS)
     
     async with aiosqlite.connect(DB_PATH) as db:
@@ -61,7 +79,7 @@ async def save_file_record(token: str, user_id: int, file_id: str, file_unique_i
     }
 
 async def get_file_record(token: str) -> dict | None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(IST)
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM files WHERE token = ?", (token,)) as cursor:
@@ -77,7 +95,7 @@ async def get_file_record(token: str) -> dict | None:
             return dict(row)
 
 async def get_file_by_id_or_token(identifier: str | int) -> dict | None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(IST)
     clean_id = str(identifier).strip().lstrip("#")
     
     async with aiosqlite.connect(DB_PATH) as db:
@@ -126,7 +144,7 @@ async def delete_file_by_id_or_token(identifier: str | int, user_id: int | None 
         return res.rowcount > 0
 
 async def get_active_files(user_id: int | None = None, page: int = 1, page_size: int = 8) -> tuple[list[dict], int]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(IST)
     offset = (page - 1) * page_size
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -148,7 +166,7 @@ async def get_active_files(user_id: int | None = None, page: int = 1, page_size:
         return [dict(r) for r in rows], total
 
 async def get_user_files(user_id: int, limit: int = 10) -> list[dict]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(IST)
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -159,7 +177,7 @@ async def get_user_files(user_id: int, limit: int = 10) -> list[dict]:
             return [dict(r) for r in rows]
 
 async def get_global_stats() -> dict:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(IST)
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*), COALESCE(SUM(download_count), 0), COALESCE(SUM(file_size), 0) FROM files") as c1:
             total_files, total_downloads, total_bytes = await c1.fetchone()
@@ -176,7 +194,7 @@ async def get_global_stats() -> dict:
         }
 
 async def cleanup_expired_files() -> int:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(IST)
     async with aiosqlite.connect(DB_PATH) as db:
         res = await db.execute("DELETE FROM files WHERE expires_at < ?", (now.isoformat(),))
         await db.commit()
@@ -184,7 +202,7 @@ async def cleanup_expired_files() -> int:
 
 async def check_rate_limit(user_id: int, limit: int = 5) -> bool:
     """Returns True if within rate limit, False if rate limited (more than 5 files in last 60 seconds)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(IST)
     window = now - timedelta(seconds=60)
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*) FROM user_activity WHERE user_id = ? AND uploaded_at > ?", (user_id, window.isoformat())) as cursor:

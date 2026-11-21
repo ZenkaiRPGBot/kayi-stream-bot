@@ -1,10 +1,12 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
 
-BOT_START_TIME = datetime.now(timezone.utc)
+# Indian Standard Time (UTC + 05:30)
+IST = timezone(timedelta(hours=5, minutes=30))
+BOT_START_TIME = datetime.now(IST)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 OWNER_ID = int(os.getenv("OWNER_ID", "986380678"))
@@ -12,9 +14,10 @@ LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID", "-1004495645007").strip()
 API_ID = os.getenv("API_ID", "").strip()
 API_HASH = os.getenv("API_HASH", "").strip()
 
-BRAND_NAME = "Kayi Stream"
-BOT_USERNAME = "@KayiStreamBot"
-CHANNEL_USERNAME = "@KayiBots"
+BRAND_NAME = "Kayi File to Link"
+BOT_USERNAME = os.getenv("BOT_USERNAME", "@KayiStreamBot")
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@KayiBots")
+COMMUNITY_URL = os.getenv("COMMUNITY_URL", "https://t.me/kayitv")
 
 def get_server_url() -> str:
     # 1. Custom SERVER_URL if not localhost
