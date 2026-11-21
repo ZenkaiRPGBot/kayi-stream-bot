@@ -688,8 +688,19 @@ a {
 
 :fullscreen,
 :-webkit-full-screen,
+html.is-fullscreen,
 body.is-fullscreen {
   overflow: hidden !important;
+  touch-action: none;
+  background-color: #000000 !important;
+}
+
+body.is-fullscreen .app-header,
+body.is-fullscreen .player-top-bar,
+body.is-fullscreen .player-actions-row,
+body.is-fullscreen .app-bottom-nav,
+body.is-fullscreen .view-panel:not(#viewPlayer) {
+  display: none !important;
 }
 
 :fullscreen #playerCanvas,
@@ -706,8 +717,10 @@ body.is-fullscreen .player-canvas-container {
   bottom: 0 !important;
   width: 100vw !important;
   height: 100vh !important;
+  height: 100dvh !important;
   max-width: 100vw !important;
   max-height: 100vh !important;
+  max-height: 100dvh !important;
   aspect-ratio: auto !important;
   border-radius: 0 !important;
   border: none !important;
@@ -724,10 +737,10 @@ body.is-fullscreen movi-player,
 :fullscreen .player-video-element,
 :-webkit-full-screen .player-video-element,
 body.is-fullscreen .player-video-element {
-  width: 100vw !important;
-  height: 100vh !important;
-  max-width: 100vw !important;
-  max-height: 100vh !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
   aspect-ratio: auto !important;
   object-fit: contain !important;
 }
@@ -735,12 +748,12 @@ body.is-fullscreen .player-video-element {
 /* Exit Fullscreen Floating Button */
 .player-fs-exit-btn {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: max(16px, env(safe-area-inset-top, 16px));
+  right: max(16px, env(safe-area-inset-right, 16px));
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background-color: rgba(18, 20, 24, 0.8);
+  background-color: rgba(18, 20, 24, 0.85);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.25);

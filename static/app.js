@@ -46,6 +46,7 @@
 
   // Player Bottom Action Buttons
   const btnDownloadMain = document.getElementById('btnDownloadMain');
+  const btnOpenBrowser = document.getElementById('btnOpenBrowser');
   const btnCopyLinkMain = document.getElementById('btnCopyLinkMain');
   const btnTracksBottom = document.getElementById('btnTracksBottom');
   const btnExternalPlayer = document.getElementById('btnExternalPlayer');
@@ -170,18 +171,43 @@
 
   function checkAndResumeProgress(file) {
     if (hasResumedCurrentVideo) return;
-    const key = getFileProgressKey(file);
-    if (!key) return;
+    let seekTarget = null;
+
+    // 1. Check URL query param ?t= or hash #t= (e.g. from "Open in Browser")
     try {
-      const saved = parseFloat(localStorage.getItem(key));
+      const urlParams = new URLSearchParams(window.location.search);
+      const tStr = urlParams.get('t');
+      if (tStr) {
+        const val = parseFloat(tStr);
+        if (isFinite(val) && val > 0) seekTarget = val;
+      } else if (window.location.hash.startsWith('#t=')) {
+        const val = parseFloat(window.location.hash.slice(3));
+        if (isFinite(val) && val > 0) seekTarget = val;
+      }
+    } catch (_) {}
+
+    // 2. Check local progress store
+    if (seekTarget === null) {
+      const key = getFileProgressKey(file);
+      if (key) {
+        try {
+          const saved = parseFloat(localStorage.getItem(key));
+          if (saved && saved > 3) seekTarget = saved;
+        } catch (_) {}
+      }
+    }
+
+    if (seekTarget === null) return;
+
+    try {
       const playerEl = (moviPlayer && moviPlayer.style.display !== 'none') ? moviPlayer : nativeFallback;
       const dur = playerEl?.duration;
-      if (saved && saved > 3 && isFinite(dur) && dur > 0 && saved < dur - 8) {
+      if (seekTarget > 0 && (!isFinite(dur) || dur <= 0 || seekTarget < dur - 3)) {
         hasResumedCurrentVideo = true;
         if (playerEl) {
-          playerEl.currentTime = saved;
+          playerEl.currentTime = seekTarget;
         }
-        showToast(`Resumed from ${formatTime(saved)}`);
+        showToast(`Resumed from ${formatTime(seekTarget)}`);
       }
     } catch (_) {}
   }
@@ -246,6 +272,13 @@
       e.preventDefault();
       triggerBrowserDownload(file.dl_url);
     };
+
+    if (btnOpenBrowser) {
+      btnOpenBrowser.onclick = (e) => {
+        e.preventDefault();
+        openInWebBrowser(file);
+      };
+    }
 
     btnCopyLinkMain.onclick = () => {
       const copyUrl = file.watch_url || `${window.location.origin}/watch/${file.display_id || file.id}`;
@@ -1190,12 +1223,24 @@
     const elem = playerCanvas;
     if (!elem) return;
 
-    if (tg?.expand) {
-      try { tg.expand(); } catch (_) {}
+    // Inside Telegram WebApp:
+    const isInsideTelegram = !!(window.Telegram?.WebApp?.initData);
+    if (isInsideTelegram) {
+      if (tg?.expand) {
+        try { tg.expand(); } catch (_) {}
+      }
+      if (tg && typeof tg.requestFullscreen === 'function') {
+        try { tg.requestFullscreen(); } catch (_) {}
+      }
+      // Use clean CSS pseudo-fullscreen takeover inside Telegram
+      fallbackPseudoFullscreen();
+      return;
     }
 
+    // In regular external browser (Chrome / Edge / Firefox):
     if (elem.requestFullscreen) {
       elem.requestFullscreen().then(() => {
+        document.documentElement.classList.add('is-fullscreen');
         document.body.classList.add('is-fullscreen');
         triggerHaptic('medium');
       }).catch(() => {
@@ -1203,6 +1248,7 @@
       });
     } else if (elem.webkitRequestFullscreen) {
       elem.webkitRequestFullscreen();
+      document.documentElement.classList.add('is-fullscreen');
       document.body.classList.add('is-fullscreen');
       triggerHaptic('medium');
     } else {
@@ -1217,16 +1263,26 @@
   }
 
   function fallbackPseudoFullscreen() {
+    document.documentElement.classList.add('is-fullscreen');
     document.body.classList.add('is-fullscreen', 'css-pseudo-fs');
+    try {
+      if (screen.orientation && typeof screen.orientation.lock === 'function') {
+        screen.orientation.lock('landscape').catch(() => {});
+      }
+    } catch (_) {}
     triggerHaptic('medium');
   }
 
   function exitFullscreenMode() {
+    if (tg && typeof tg.exitFullscreen === 'function') {
+      try { tg.exitFullscreen(); } catch (_) {}
+    }
     if (document.exitFullscreen) {
       document.exitFullscreen().catch(() => {});
     } else if (document.webkitExitFullscreen) {
       document.webkitExitFullscreen();
     }
+    document.documentElement.classList.remove('is-fullscreen');
     document.body.classList.remove('is-fullscreen', 'css-pseudo-fs');
     try {
       if (screen.orientation && typeof screen.orientation.unlock === 'function') {
@@ -1234,6 +1290,25 @@
       }
     } catch (_) {}
     triggerHaptic('light');
+  }
+
+  function openInWebBrowser(file) {
+    if (!file) return;
+    const playerEl = (moviPlayer && moviPlayer.style.display !== 'none') ? moviPlayer : nativeFallback;
+    const curTime = Math.floor(playerEl?.currentTime || 0);
+
+    const baseWatchUrl = file.watch_url || `${window.location.origin}/watch/${file.display_id || file.id}`;
+    const targetUrl = curTime > 3 ? `${baseWatchUrl}?t=${curTime}` : baseWatchUrl;
+
+    savePlaybackProgress();
+
+    if (tg && typeof tg.openLink === 'function') {
+      tg.openLink(targetUrl);
+    } else {
+      window.open(targetUrl, '_blank');
+    }
+    showToast(curTime > 3 ? `Opening browser from ${formatTime(curTime)}...` : 'Opening in browser...');
+    triggerHaptic('medium');
   }
 
   if (btnExitFullscreen) {
