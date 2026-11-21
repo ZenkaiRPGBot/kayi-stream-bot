@@ -970,8 +970,10 @@
       moviPlayer.volume = 1;
       moviPlayer.muted = false;
       try { moviPlayer.removeAttribute('muted'); } catch (_) {}
-      moviPlayer.setAttribute('src', file.stream_url);
-      moviPlayer.src = file.stream_url;
+      if (moviPlayer.getAttribute('src') !== file.stream_url) {
+        moviPlayer.setAttribute('src', file.stream_url);
+        moviPlayer.src = file.stream_url;
+      }
       try {
         if (typeof moviPlayer.play === 'function') {
           moviPlayer.play().catch(() => {});
@@ -980,22 +982,23 @@
     }
     if (nativeFallback) {
       nativeFallback.style.display = 'none';
-      nativeFallback.pause();
+      try { nativeFallback.pause(); } catch (_) {}
       nativeFallback.src = '';
     }
 
     if (fallbackTimeoutTimer) clearTimeout(fallbackTimeoutTimer);
     fallbackTimeoutTimer = setTimeout(() => {
-      if (!playerReady) {
-        const hasInit = moviPlayer && (moviPlayer.shadowRoot || moviPlayer.readyState > 0 || moviPlayer.player);
-        if (!hasInit) {
-          console.warn('[Player] Movi WASM element timeout, trying native fallback');
+      dismissPlayerLoading();
+      const hasInit = moviPlayer && (moviPlayer.shadowRoot || moviPlayer.readyState > 0 || moviPlayer.player);
+      if (!hasInit) {
+        console.warn('[Player] Movi WASM element timeout after 20s');
+        if (file && file.name && file.name.match(/\.(mp4|webm)$/i)) {
           activateNativeFallback(file);
         } else {
-          dismissPlayerLoading();
+          playerErrorOverlay.classList.add('visible');
         }
       }
-    }, 18000);
+    }, 20000);
   }
 
   function activateNativeFallback(file) {
@@ -1081,7 +1084,9 @@
 
     moviPlayer.addEventListener('error', (e) => {
       console.warn('[MoviPlayer] Error event:', e);
-      if (currentActiveFile) {
+      dismissPlayerLoading();
+      // If error occurred on mp4/webm, try native fallback. Otherwise let Movi retry
+      if (currentActiveFile && currentActiveFile.name && currentActiveFile.name.match(/\.(mp4|webm)$/i)) {
         activateNativeFallback(currentActiveFile);
       }
     });

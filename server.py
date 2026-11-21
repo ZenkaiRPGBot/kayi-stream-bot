@@ -93,6 +93,7 @@ async def handle_root(request: web.Request) -> web.Response:
         with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
         html = html.replace("{{initial_script}}", "")
+        html = html.replace("{{stream_src}}", "")
         return web.Response(text=html, content_type="text/html")
 
     return web.Response(text="Kayi Stream App Ready", content_type="text/plain")
@@ -253,6 +254,7 @@ async def handle_watch(request: web.Request) -> web.Response:
 
     inject_js = f"window.__INITIAL_FILE__ = {json.dumps(initial_file)};"
     html = html.replace("{{initial_script}}", inject_js)
+    html = html.replace("{{stream_src}}", stream_url)
 
     # Prewarm media in background
     asyncio.create_task(_prewarm_media(f_id, dl_url))
@@ -374,13 +376,6 @@ async def handle_options_cors(request: web.Request) -> web.Response:
     )
 
 async def handle_stream(request: web.Request) -> web.StreamResponse:
-    # If user pasted the /stream/ URL directly into a browser address bar:
-    # Browsers ask for 'text/html' without a Range header. Redirect to /watch/{identifier} web player!
-    accept = request.headers.get("Accept", "")
-    range_hdr = request.headers.get("Range")
-    if "text/html" in accept and not range_hdr:
-        identifier = request.match_info.get("identifier")
-        raise web.HTTPFound(f"/watch/{identifier}")
     return await handle_media_transfer(request, is_download=False)
 
 async def handle_download(request: web.Request) -> web.StreamResponse:
@@ -399,6 +394,21 @@ async def handle_media_transfer(request: web.Request, is_download: bool) -> web.
 
     # Clean file name for Content-Disposition
     safe_name = re.sub(r'[^\w\.\-\s\[\]\(\)]', '_', file_name)
+
+    # Detect proper media MIME type so browser engines decode correctly
+    fn_lower = file_name.lower()
+    if fn_lower.endswith(".mkv"):
+        mime_type = "video/x-matroska"
+    elif fn_lower.endswith(".mp4"):
+        mime_type = "video/mp4"
+    elif fn_lower.endswith(".webm"):
+        mime_type = "video/webm"
+    elif fn_lower.endswith(".mov"):
+        mime_type = "video/quicktime"
+    elif fn_lower.endswith(".ts"):
+        mime_type = "video/mp2t"
+    elif not mime_type or mime_type == "application/octet-stream":
+        mime_type = "video/mp4"
 
     # 1. Zero-Disk MTProto Streaming Engine (FastByteStreamer with persistent DC sessions)
     if byte_streamer is not None:
@@ -424,7 +434,7 @@ async def handle_media_transfer(request: web.Request, is_download: bool) -> web.
             response.headers["Accept-Ranges"] = "bytes"
             response.headers["Cache-Control"] = "public, max-age=86400, immutable"
             response.headers["Access-Control-Allow-Origin"] = "*"
-            response.headers["Access-Control-Allow-Headers"] = "Range, Accept-Ranges, Content-Range, Content-Length"
+            response.headers["Access-Control-Allow-Headers"] = "Range, Accept-Ranges, Content-Range, Content-Length, Content-Type, Authorization"
             response.headers["Access-Control-Expose-Headers"] = "Content-Length, Content-Range, Accept-Ranges"
             
             disposition_type = "attachment" if is_download else "inline"
