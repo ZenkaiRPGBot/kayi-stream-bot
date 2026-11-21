@@ -20,11 +20,14 @@ mimetypes.init()
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(STATIC_DIR, exist_ok=True)
 
-# Pyrogram MTProto Client for unlimited streaming (handles files up to 2GB/4GB)
+from streamer import FastByteStreamer
+
+# Pyrogram MTProto Client & FastByteStreamer for unlimited streaming
 pyrogram_client = None
+byte_streamer: FastByteStreamer | None = None
 
 async def init_pyrogram_client():
-    global pyrogram_client
+    global pyrogram_client, byte_streamer
     if API_ID and API_HASH and BOT_TOKEN:
         try:
             from pyrogram import Client
@@ -41,10 +44,12 @@ async def init_pyrogram_client():
             )
             await pyrogram_client.start()
             me = await pyrogram_client.get_me()
-            print(f"[MTProto] Turbo streaming engine connected as @{me.username}! (TgCrypto C-accelerator online)")
+            byte_streamer = FastByteStreamer(pyrogram_client)
+            print(f"[MTProto] Turbo FastByteStreamer connected as @{me.username}! (TgCrypto C-accelerator online)")
         except Exception as e:
             print(f"[MTProto] Failed to initialize Pyrogram client: {e}")
             pyrogram_client = None
+            byte_streamer = None
     else:
         print("[MTProto] Notice: API_ID or API_HASH not found in .env.")
 
@@ -176,6 +181,7 @@ async def handle_health(request: web.Request) -> web.Response:
         "status": "healthy",
         "service": "kayi-stream-bot",
         "mtproto_active": pyrogram_client is not None,
+        "fast_streamer_active": byte_streamer is not None,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "stats": stats
     })
@@ -347,8 +353,8 @@ async def handle_media_transfer(request: web.Request, is_download: bool) -> web.
     # Clean file name for Content-Disposition
     safe_name = re.sub(r'[^\w\.\-\s\[\]\(\)]', '_', file_name)
 
-    # 1. MTProto Streaming Engine (Pyrogram - handles files up to 2GB/4GB)
-    if pyrogram_client is not None:
+    # 1. Zero-Disk MTProto Streaming Engine (FastByteStreamer with persistent DC sessions)
+    if byte_streamer is not None:
         try:
             range_header = request.headers.get("Range")
             start_byte = 0
@@ -387,30 +393,10 @@ async def handle_media_transfer(request: web.Request, is_download: bool) -> web.
 
             await response.prepare(request)
 
-            # Pyrogram 1 MiB chunk offset with precise limit
-            chunk_size = 1024 * 1024  # 1 MiB
-            chunk_offset = start_byte // chunk_size
-            skip_in_first_chunk = start_byte % chunk_size
-            bytes_to_send = content_length
-            chunks_needed = math.ceil((skip_in_first_chunk + bytes_to_send) / chunk_size) + 1
-
-            async for chunk in pyrogram_client.stream_media(file_id, offset=chunk_offset, limit=chunks_needed):
-                if skip_in_first_chunk > 0:
-                    chunk = chunk[skip_in_first_chunk:]
-                    skip_in_first_chunk = 0
-
-                if len(chunk) > bytes_to_send:
-                    chunk = chunk[:bytes_to_send]
-
-                if not chunk:
-                    break
-
+            async for chunk in byte_streamer.yield_file(file_id, start_byte, content_length):
                 try:
                     await response.write(chunk)
                 except (ConnectionResetError, aiohttp.ClientConnectionError, asyncio.CancelledError):
-                    break
-                bytes_to_send -= len(chunk)
-                if bytes_to_send <= 0:
                     break
 
             await response.write_eof()
@@ -419,7 +405,7 @@ async def handle_media_transfer(request: web.Request, is_download: bool) -> web.
             return response
 
         except Exception as e:
-            print(f"[MTProto Stream Error] {e}")
+            print(f"[FastByteStreamer Error] {e}")
 
     # 2. Standard Bot API Fallback (for files <= 20 MB)
     if file_size <= 20 * 1024 * 1024:
@@ -475,16 +461,18 @@ async def handle_media_transfer(request: web.Request, is_download: bool) -> web.
 async def ping_self_loop():
     if not PING_URL:
         return
-    print(f"[keep_alive] Self-ping active! Target: {PING_URL} (every 10 minutes)")
-    await asyncio.sleep(30)
-    async with aiohttp.ClientSession() as session:
+    target_url = PING_URL.rstrip("/") + "/health"
+    print(f"[keep_alive] Self-ping active! Target: {target_url} (every 4 minutes)")
+    await asyncio.sleep(20)
+    headers = {"User-Agent": "KayiStream-KeepAlive/1.0"}
+    async with aiohttp.ClientSession(headers=headers) as session:
         while True:
             try:
-                async with session.get(PING_URL, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                async with session.get(target_url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                     print(f"[keep_alive] Self-ping status: {resp.status}")
             except Exception as e:
                 print(f"[keep_alive] Self-ping failed: {e}")
-            await asyncio.sleep(600)
+            await asyncio.sleep(240)
 
 async def start_server():
     # Initialize MTProto Pyrogram client

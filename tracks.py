@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import subprocess
+import shutil
 
 CACHE_BASE_DIR = os.path.join(os.path.dirname(__file__), "media_cache")
 os.makedirs(CACHE_BASE_DIR, exist_ok=True)
@@ -48,6 +49,18 @@ async def probe_file(file_id: int | str, stream_url: str) -> dict:
                 return data
         except Exception:
             pass
+
+    # Instant return if ffprobe binary is not installed on system
+    if not shutil.which("ffprobe"):
+        fallback = {
+            "mode": "direct",
+            "is_mkv": False,
+            "video": {"codec": "mp4", "width": 1920, "height": 1080, "duration": 0.0},
+            "audio": [{"index": 1, "stream_id": 0, "title": "Original Audio", "language_name": "Original Audio", "default": True}],
+            "subtitles": []
+        }
+        _PROBE_CACHE[file_id_str] = fallback
+        return fallback
 
     cmd = [
         "ffprobe", "-v", "error",

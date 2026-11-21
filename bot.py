@@ -756,7 +756,14 @@ async def handle_media_file(message: types.Message):
         await message.reply(card_text, parse_mode=ParseMode.HTML, reply_markup=markup, link_preview_options=types.LinkPreviewOptions(is_disabled=True))
         return
 
-    # 2. Save new record with sequential date format ID: e.g. 21112026001, 21112026002
+    # 2. Forward backup to LOG_CHANNEL_ID if configured
+    if LOG_CHANNEL_ID:
+        try:
+            asyncio.create_task(message.forward(chat_id=int(LOG_CHANNEL_ID)))
+        except Exception:
+            pass
+
+    # 3. Save new record with sequential date format ID: e.g. 21112026001, 21112026002
     token = secrets.token_urlsafe(12)
     record = await db.save_file_record(
         token=token,
@@ -773,7 +780,7 @@ async def handle_media_file(message: types.Message):
     dl_url = f"{srv_url}/dl/{disp_id}"
     watch_url = f"{srv_url}/watch/{disp_id}"
 
-    # 3. Build Single Clean Response Card (No ID shown on main card)
+    # 4. Build Single Clean Response Card (No ID shown on main card)
     card_text = build_file_card_text(
         file_name=file_name,
         file_size=file_size,
@@ -821,7 +828,19 @@ async def main():
 
     print(f"{BRAND_NAME} Bot active. Serving requests with zero-disk RAM chunk streaming.")
     try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        retry_delay = 2
+        while True:
+            try:
+                print(f"[{BRAND_NAME}] Polling Telegram updates...")
+                await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types(), handle_signals=False)
+                break
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                print(f"[{BRAND_NAME}] Polling stopped safely.")
+                break
+            except Exception as e:
+                print(f"[{BRAND_NAME}] Polling hiccup: {e}. Resuming in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(int(retry_delay * 1.5) + 1, 30)
     finally:
         if HTTP_SESSION and not HTTP_SESSION.closed:
             await HTTP_SESSION.close()
