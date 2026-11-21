@@ -5,12 +5,13 @@ import mimetypes
 import re
 import json
 from datetime import datetime, timezone
+import aiosqlite
 import aiohttp
 from aiohttp import web
 
 from config import (
     BOT_TOKEN, OWNER_ID, LOG_CHANNEL_ID, API_ID, API_HASH,
-    PORT, PING_URL, BRAND_NAME, CHANNEL_USERNAME, get_server_url
+    PORT, PING_URL, BRAND_NAME, CHANNEL_USERNAME, IST, get_server_url
 )
 import database as db
 import tracks
@@ -98,14 +99,29 @@ async def handle_root(request: web.Request) -> web.Response:
 
 async def handle_api_user_files(request: web.Request) -> web.Response:
     user_id_str = request.query.get("user_id")
-    if not user_id_str:
-        return web.json_response({"status": "error", "message": "Missing user_id", "files": []})
-    try:
-        user_id = int(user_id_str)
-    except ValueError:
-        return web.json_response({"status": "error", "message": "Invalid user_id", "files": []})
+    user_id = None
+    if user_id_str:
+        try:
+            user_id = int(user_id_str)
+        except ValueError:
+            pass
 
-    files = await db.get_user_files(user_id, limit=50)
+    files = []
+    if user_id:
+        files = await db.get_user_files(user_id, limit=50)
+
+    # Fallback to recent active files in library if no user files found or outside Telegram
+    if not files:
+        now = datetime.now(IST)
+        async with aiosqlite.connect(db.DB_PATH) as database:
+            database.row_factory = aiosqlite.Row
+            async with database.execute(
+                "SELECT * FROM files WHERE expires_at > ? ORDER BY id DESC LIMIT 50",
+                (now.isoformat(),)
+            ) as cursor:
+                rows = await cursor.fetchall()
+                files = [dict(r) for r in rows]
+
     base_url = get_server_url()
 
     formatted = []
@@ -345,7 +361,26 @@ async def handle_hls_file(request: web.Request) -> web.Response:
 
     return web.FileResponse(file_path, headers={"Content-Type": c_type, "Access-Control-Allow-Origin": "*"})
 
+async def handle_options_cors(request: web.Request) -> web.Response:
+    return web.Response(
+        status=204,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Access-Control-Allow-Headers": "Range, Accept-Ranges, Content-Range, Content-Length, Content-Type, Authorization",
+            "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
+            "Access-Control-Max-Age": "86400",
+        }
+    )
+
 async def handle_stream(request: web.Request) -> web.StreamResponse:
+    # If user pasted the /stream/ URL directly into a browser address bar:
+    # Browsers ask for 'text/html' without a Range header. Redirect to /watch/{identifier} web player!
+    accept = request.headers.get("Accept", "")
+    range_hdr = request.headers.get("Range")
+    if "text/html" in accept and not range_hdr:
+        identifier = request.match_info.get("identifier")
+        raise web.HTTPFound(f"/watch/{identifier}")
     return await handle_media_transfer(request, is_download=False)
 
 async def handle_download(request: web.Request) -> web.StreamResponse:
@@ -517,6 +552,11 @@ async def start_server():
     app.router.add_get("/watch/{identifier}", handle_watch)
     app.router.add_get("/stream/{identifier}", handle_stream)
     app.router.add_get("/dl/{identifier}", handle_download)
+
+    # CORS OPTIONS routes for WASM Range requests
+    app.router.add_route("OPTIONS", "/stream/{identifier}", handle_options_cors)
+    app.router.add_route("OPTIONS", "/dl/{identifier}", handle_options_cors)
+    app.router.add_route("OPTIONS", "/api/{tail:.*}", handle_options_cors)
 
     runner = web.AppRunner(app)
     await runner.setup()

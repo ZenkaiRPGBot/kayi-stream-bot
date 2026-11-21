@@ -242,7 +242,9 @@
     };
 
     btnCopyLinkMain.onclick = () => {
-      copyToClipboard(file.stream_url);
+      const copyUrl = file.watch_url || `${window.location.origin}/watch/${file.display_id || file.id}`;
+      copyToClipboard(copyUrl);
+      showToast('Watch link copied to clipboard');
     };
 
     if (btnTracksBottom) {
@@ -278,20 +280,30 @@
   // ==============================================================================
 
   async function loadUserFiles() {
-    const userId = currentUser?.id || '986380678'; // fallback to owner/demo
+    const userId = currentUser?.id || '986380678';
     try {
       const res = await fetch(`/api/user/files?user_id=${userId}`);
       const data = await res.json();
-      if (data.status === 'success' && data.files) {
+      if (data.status === 'success' && data.files && data.files.length > 0) {
         allFiles = data.files;
-        renderFileList(allFiles);
       } else {
-        renderFileList([]);
+        allFiles = [];
       }
     } catch (err) {
       console.warn('[Files] Load error:', err);
-      renderFileList([]);
+      allFiles = [];
     }
+
+    // If initial file was passed via watch URL, make sure it is in allFiles
+    if (window.__INITIAL_FILE__) {
+      const initF = window.__INITIAL_FILE__;
+      const exists = allFiles.some((f) => f.display_id === initF.display_id || String(f.id) === String(initF.id));
+      if (!exists) {
+        allFiles.unshift(initF);
+      }
+    }
+
+    renderFileList(allFiles);
   }
 
   function renderFileList(files) {
@@ -411,7 +423,9 @@
       card.querySelector('.btn-dd-copy')?.addEventListener('click', (e) => {
         e.stopPropagation();
         menu.classList.remove('open');
-        copyToClipboard(file.stream_url);
+        const copyUrl = file.watch_url || `${window.location.origin}/watch/${file.display_id || file.id}`;
+        copyToClipboard(copyUrl);
+        showToast('Watch link copied to clipboard');
       });
 
       card.querySelector('.btn-dd-vlc')?.addEventListener('click', (e) => {
@@ -485,6 +499,19 @@
   // MOVI PLAYER + JASSUB LIBASS SUBTITLE ENGINE (WASM + WebCodecs)
   // ==============================================================================
 
+  let activeSubTrackId = null; // null = Off, or integer track id
+  let activeAudioTrackId = null;
+
+  async function ensureMoviPlayerReady() {
+    if (customElements.get('movi-player')) return;
+    try {
+      await Promise.race([
+        customElements.whenDefined('movi-player'),
+        new Promise((res) => setTimeout(res, 4000))
+      ]);
+    } catch (_) {}
+  }
+
   // JASSUB Worker URL Loader
   let jassubWorkerBlobUrl = null;
   let jassubWorkerPromise = null;
@@ -526,7 +553,7 @@
 
     mount(overlay) {
       this.overlay = overlay;
-      const parent = moviPlayer.shadowRoot || (overlay && overlay.parentNode) || playerCanvas;
+      const parent = moviPlayer?.shadowRoot || (overlay && overlay.parentNode) || playerCanvas;
       if (!this.canvas) {
         this.canvas = document.createElement('canvas');
         this.canvas.className = 'jassub-subtitle-canvas';
@@ -581,11 +608,11 @@
           const defaultFontUrl = 'https://cdn.jsdelivr.net/npm/jassub/dist/default.woff2';
           const workerUrl = await getJassubWorkerUrl();
 
-          const vTrack = moviPlayer.player?.trackManager?.getActiveVideoTrack?.();
+          const vTrack = moviPlayer?.player?.trackManager?.getActiveVideoTrack?.();
           const vW = vTrack?.width || 1920;
           const vH = vTrack?.height || 1080;
           const dpr = Math.min(window.devicePixelRatio || 1, 2);
-          const rect = moviPlayer.getBoundingClientRect();
+          const rect = moviPlayer?.getBoundingClientRect() || { width: vW, height: vH };
           const dispW = Math.round(rect.width) || vW;
           const dispH = Math.round(rect.height) || vH;
 
@@ -721,11 +748,11 @@
     render(currentTime, videoWidth, videoHeight) {
       if (!this.jassub || !this.canvas) return;
       try {
-        const isPaused = !!moviPlayer.paused;
-        const rate = moviPlayer.playbackRate || 1;
+        const isPaused = !!moviPlayer?.paused;
+        const rate = moviPlayer?.playbackRate || 1;
         this.jassub.setCurrentTime(isPaused, currentTime + this.delay, rate);
 
-        const host = moviPlayer.shadowRoot || (this.overlay && this.overlay.parentNode) || playerCanvas;
+        const host = moviPlayer?.shadowRoot || (this.overlay && this.overlay.parentNode) || playerCanvas;
         if (host && this.canvas.parentNode !== host) {
           host.appendChild(this.canvas);
         }
@@ -733,7 +760,7 @@
         const vW = videoWidth || 1920;
         const vH = videoHeight || 1080;
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const rect = moviPlayer.getBoundingClientRect();
+        const rect = moviPlayer?.getBoundingClientRect() || { width: vW, height: vH };
         const dispW = Math.round(rect.width) || vW;
         const dispH = Math.round(rect.height) || vH;
 
@@ -841,16 +868,18 @@
           overlay.click();
         }
       }
-      moviPlayer._userHasUnmuted = true;
-      moviPlayer._autoMutedForAutoplay = false;
-      moviPlayer.muted = false;
-      moviPlayer.volume = 1;
-      moviPlayer.removeAttribute('muted');
-      if (moviPlayer.player) {
-        if (typeof moviPlayer.player.setMuted === 'function') moviPlayer.player.setMuted(false);
-        if (typeof moviPlayer.player.setVolume === 'function') moviPlayer.player.setVolume(1);
+      if (moviPlayer) {
+        moviPlayer._userHasUnmuted = true;
+        moviPlayer._autoMutedForAutoplay = false;
+        moviPlayer.muted = false;
+        moviPlayer.volume = 1;
+        moviPlayer.removeAttribute('muted');
+        if (moviPlayer.player) {
+          if (typeof moviPlayer.player.setMuted === 'function') moviPlayer.player.setMuted(false);
+          if (typeof moviPlayer.player.setVolume === 'function') moviPlayer.player.setVolume(1);
+        }
+        if (typeof moviPlayer.updateVolume === 'function') moviPlayer.updateVolume();
       }
-      if (typeof moviPlayer.updateVolume === 'function') moviPlayer.updateVolume();
     } catch (_) {}
   }
 
@@ -868,6 +897,7 @@
         const activeTrack = inner.trackManager?.getActiveSubtitleTrack?.();
         if (activeTrack) {
           subtitleSelected = true;
+          activeSubTrackId = activeTrack.id;
           return;
         }
         const tracks = typeof inner.getSubtitleTracks === 'function' ? inner.getSubtitleTracks() : [];
@@ -895,6 +925,7 @@
               inner.selectSubtitleTrack(target.id);
             }
             subtitleSelected = true;
+            activeSubTrackId = target.id;
             return;
           }
         }
@@ -915,10 +946,11 @@
     }
   }
 
-  function loadVideoSource(file) {
+  async function loadVideoSource(file) {
     hasResumedCurrentVideo = false;
     subtitleSelected = false;
     playerReady = false;
+    activeSubTrackId = null;
     playerErrorOverlay.classList.remove('visible');
     playerLoadingSpinner.classList.add('visible');
 
@@ -930,14 +962,21 @@
       sessionStorage.removeItem('movi:subtitlelang');
     } catch (_) {}
 
+    await ensureMoviPlayerReady();
+
     // Reset display
     if (moviPlayer) {
       moviPlayer.style.display = 'block';
       moviPlayer.volume = 1;
       moviPlayer.muted = false;
       try { moviPlayer.removeAttribute('muted'); } catch (_) {}
+      moviPlayer.setAttribute('src', file.stream_url);
       moviPlayer.src = file.stream_url;
-      try { moviPlayer.play(); } catch (_) {}
+      try {
+        if (typeof moviPlayer.play === 'function') {
+          moviPlayer.play().catch(() => {});
+        }
+      } catch (_) {}
     }
     if (nativeFallback) {
       nativeFallback.style.display = 'none';
@@ -948,10 +987,15 @@
     if (fallbackTimeoutTimer) clearTimeout(fallbackTimeoutTimer);
     fallbackTimeoutTimer = setTimeout(() => {
       if (!playerReady) {
-        console.warn('[Player] Movi WASM element timeout, trying native fallback');
-        activateNativeFallback(file);
+        const hasInit = moviPlayer && (moviPlayer.shadowRoot || moviPlayer.readyState > 0 || moviPlayer.player);
+        if (!hasInit) {
+          console.warn('[Player] Movi WASM element timeout, trying native fallback');
+          activateNativeFallback(file);
+        } else {
+          dismissPlayerLoading();
+        }
       }
-    }, 15000);
+    }, 18000);
   }
 
   function activateNativeFallback(file) {
@@ -968,6 +1012,31 @@
         dismissPlayerLoading();
       });
     }
+  }
+
+  function loadNativeSubtitleTrack(subIndex, label) {
+    if (!nativeFallback || !currentActiveFile) return;
+    nativeFallback.querySelectorAll('track').forEach((t) => t.remove());
+    if (subIndex === null || subIndex === -1) {
+      if (nativeFallback.textTracks) {
+        for (let j = 0; j < nativeFallback.textTracks.length; j++) {
+          nativeFallback.textTracks[j].mode = 'disabled';
+        }
+      }
+      return;
+    }
+    const tr = document.createElement('track');
+    tr.kind = 'subtitles';
+    tr.label = label || 'Subtitles';
+    tr.srclang = 'en';
+    tr.src = `/api/media/${currentActiveFile.display_id || currentActiveFile.id}/subs/${subIndex}.vtt`;
+    tr.default = true;
+    tr.onload = () => {
+      try {
+        if (tr.track) tr.track.mode = 'showing';
+      } catch (_) {}
+    };
+    nativeFallback.appendChild(tr);
   }
 
   // Player Event Listeners
@@ -1002,18 +1071,18 @@
     });
 
     moviPlayer.addEventListener('subtitletrackchange', () => {
-      if (moviPlayer.player?.trackManager?.getActiveSubtitleTrack?.()) {
+      const active = moviPlayer.player?.trackManager?.getActiveSubtitleTrack?.();
+      if (active) {
         subtitleSelected = true;
+        activeSubTrackId = active.id;
       }
       syncSubtitleRenderer();
     });
 
-    moviPlayer.addEventListener('error', () => {
+    moviPlayer.addEventListener('error', (e) => {
+      console.warn('[MoviPlayer] Error event:', e);
       if (currentActiveFile) {
         activateNativeFallback(currentActiveFile);
-      } else {
-        playerLoadingSpinner.classList.remove('visible');
-        playerErrorOverlay.classList.add('visible');
       }
     });
 
@@ -1034,7 +1103,8 @@
       if (currentActiveFile) checkAndResumeProgress(currentActiveFile);
     });
     nativeFallback.addEventListener('timeupdate', savePlaybackProgress);
-    nativeFallback.addEventListener('error', () => {
+    nativeFallback.addEventListener('error', (e) => {
+      console.warn('[NativeFallback] Error event:', e);
       playerLoadingSpinner.classList.remove('visible');
       playerErrorOverlay.classList.add('visible');
     });
@@ -1088,8 +1158,7 @@
     const inner = moviPlayer?.player;
     let audioTracks = [];
     let subTracks = [];
-    let currentAudioId = null;
-    let currentSubId = null;
+    let currentAudioId = activeAudioIndex || 0;
 
     if (inner) {
       if (typeof inner.getAudioTracks === 'function') {
@@ -1099,9 +1168,9 @@
         subTracks = inner.getSubtitleTracks() || [];
       }
       const activeAudio = inner.trackManager?.getActiveAudioTrack?.();
-      if (activeAudio) currentAudioId = activeAudio.id;
+      if (activeAudio && activeAudio.id !== undefined) currentAudioId = activeAudio.id;
       const activeSub = inner.trackManager?.getActiveSubtitleTrack?.();
-      if (activeSub) currentSubId = activeSub.id;
+      if (activeSub && activeSub.id !== undefined) activeSubTrackId = activeSub.id;
     }
 
     // Fallback to server probed data if demuxer tracks are not populated yet
@@ -1121,7 +1190,7 @@
       }));
     }
 
-    // Render Audio Tracks
+    // 1. Render Audio Tracks
     audioTracksList.innerHTML = '';
     if (audioTracks.length === 0) {
       audioTracksList.innerHTML = `
@@ -1150,11 +1219,13 @@
         `;
 
         item.addEventListener('click', () => {
+          activeAudioIndex = tr.id !== undefined ? tr.id : i;
           if (moviPlayer) {
             if (typeof moviPlayer.pickAudioTrack === 'function') {
-              moviPlayer.pickAudioTrack(tr.id !== undefined ? tr.id : i);
-            } else if (typeof inner?.selectAudioTrack === 'function') {
-              inner.selectAudioTrack(tr.id !== undefined ? tr.id : i);
+              moviPlayer.pickAudioTrack(activeAudioIndex);
+            }
+            if (typeof inner?.selectAudioTrack === 'function') {
+              inner.selectAudioTrack(activeAudioIndex);
             }
           }
           audioTracksList.querySelectorAll('.track-item-row').forEach((r) => r.classList.remove('selected'));
@@ -1167,13 +1238,14 @@
       });
     }
 
-    // Render Subtitle Tracks
+    // 2. Render Subtitle Tracks (Fix selection & guarantee removal from OFF!)
     subTracksList.innerHTML = '';
 
-    // "Off" Option
-    const isOffSelected = (currentSubId === null || currentSubId === -1 || currentSubId === undefined);
+    const isOff = (activeSubTrackId === null || activeSubTrackId === -1 || activeSubTrackId === undefined);
+    
+    // "Off" Button
     const offItem = document.createElement('div');
-    offItem.className = `track-item-row ${isOffSelected ? 'selected' : ''}`;
+    offItem.className = `track-item-row ${isOff ? 'selected' : ''}`;
     offItem.innerHTML = `
       <div class="track-item-left">
         <span class="track-item-name">Off</span>
@@ -1181,26 +1253,35 @@
       </div>
       <span class="track-check-indicator">✓</span>
     `;
+
     offItem.addEventListener('click', () => {
+      activeSubTrackId = null;
       if (moviPlayer) {
         if (typeof moviPlayer.pickSubtitleTrack === 'function') {
-          moviPlayer.pickSubtitleTrack(-1);
-        } else if (typeof inner?.selectSubtitleTrack === 'function') {
-          inner.selectSubtitleTrack(-1);
+          moviPlayer.pickSubtitleTrack(null);
+        }
+        if (typeof inner?.selectSubtitleTrack === 'function') {
+          inner.selectSubtitleTrack(null);
+        }
+        if (typeof moviPlayer.setSubtitleRenderer === 'function') {
+          moviPlayer.setSubtitleRenderer(null);
         }
       }
-      if (assRenderer) {
-        moviPlayer.setSubtitleRenderer(null);
+      if (nativeFallback) {
+        loadNativeSubtitleTrack(null, 'Off');
       }
+
+      // Unselect every row, select ONLY offItem
       subTracksList.querySelectorAll('.track-item-row').forEach((r) => r.classList.remove('selected'));
       offItem.classList.add('selected');
+
       showToast('Subtitles: Off');
       triggerHaptic('select');
     });
     subTracksList.appendChild(offItem);
 
     subTracks.forEach((sub, i) => {
-      const isSelected = (!isOffSelected && sub.id === currentSubId);
+      const isSelected = (!isOff && (sub.id === activeSubTrackId || (activeSubTrackId === null && i === 0 && !isOff)));
       const item = document.createElement('div');
       item.className = `track-item-row ${isSelected ? 'selected' : ''}`;
       const name = sub.label || sub.title || sub.language || `Subtitle ${i + 1}`;
@@ -1215,16 +1296,26 @@
       `;
 
       item.addEventListener('click', () => {
+        const targetId = sub.id !== undefined ? sub.id : i;
+        activeSubTrackId = targetId;
+
         if (moviPlayer) {
           if (typeof moviPlayer.pickSubtitleTrack === 'function') {
-            moviPlayer.pickSubtitleTrack(sub.id !== undefined ? sub.id : i);
-          } else if (typeof inner?.selectSubtitleTrack === 'function') {
-            inner.selectSubtitleTrack(sub.id !== undefined ? sub.id : i);
+            moviPlayer.pickSubtitleTrack(targetId);
+          }
+          if (typeof inner?.selectSubtitleTrack === 'function') {
+            inner.selectSubtitleTrack(targetId);
           }
           syncSubtitleRenderer();
         }
+        if (nativeFallback) {
+          loadNativeSubtitleTrack(targetId, name);
+        }
+
+        // Unselect every row (INCLUDING OFF!), and mark ONLY this row as selected!
         subTracksList.querySelectorAll('.track-item-row').forEach((r) => r.classList.remove('selected'));
         item.classList.add('selected');
+
         showToast(`Subtitles: ${name}`);
         triggerHaptic('select');
       });
