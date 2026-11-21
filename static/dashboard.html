@@ -3,592 +3,354 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#0B0C10">
+  <meta name="theme-color" content="#FFFFFF">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>{{brand_name}} · Media Hub & Mini App</title>
-  
-  <!-- Telegram WebApp SDK -->
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  
-  <link rel="stylesheet" href="/static/player.css">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Kayi Stream · Kayi Bots</title>
+
+  <!-- Favicon & Touch Icons -->
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+
+  <!-- Inter & JetBrains Mono Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  
-  <style>
-    /* Dashboard Specific Styles */
-    .dashboard-header {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      padding-bottom: 8px;
-    }
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 
-    .user-greeting-card {
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);
-      border: 1px solid var(--border-highlight);
-      border-radius: var(--radius-xl);
-      padding: 20px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      box-shadow: var(--shadow-card);
-      position: relative;
-      overflow: hidden;
-    }
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-    .user-greeting-card::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      right: -20%;
-      width: 250px;
-      height: 250px;
-      background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .user-profile {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-
-    .user-avatar {
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
-      color: #FFF;
-      font-size: 20px;
-      font-weight: 800;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
-    }
-
-    .user-info h2 {
-      font-size: 18px;
-      font-weight: 800;
-      color: var(--text-primary);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .user-info p {
-      font-size: 12px;
-      color: var(--text-secondary);
-      margin-top: 2px;
-    }
-
-    .quick-stats-badge {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-    }
-
-    .badge-count {
-      font-size: 22px;
-      font-weight: 800;
-      color: var(--accent-blue);
-      font-family: 'JetBrains Mono', monospace;
-    }
-
-    .badge-label {
-      font-size: 10px;
-      text-transform: uppercase;
-      font-weight: 700;
-      color: var(--text-muted);
-      letter-spacing: 0.05em;
-    }
-
-    /* Quick Stream Search Bar */
-    .stream-search-bar {
-      display: flex;
-      gap: 8px;
-      background: var(--bg-card);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-lg);
-      padding: 6px;
-      box-shadow: var(--shadow-card);
-    }
-
-    .search-input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      outline: none;
-      padding: 10px 14px;
-      font-size: 14px;
-      color: var(--text-primary);
-      font-family: inherit;
-    }
-
-    .search-input::placeholder {
-      color: var(--text-muted);
-    }
-
-    .btn-search {
-      background: var(--accent-blue);
-      border: none;
-      color: #FFF;
-      padding: 10px 18px;
-      border-radius: var(--radius-md);
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      transition: all 0.15s ease;
-    }
-
-    .btn-search:hover {
-      background: var(--accent-blue-hover);
-    }
-
-    /* Navigation Tabs */
-    .dashboard-tabs {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      background: rgba(255, 255, 255, 0.03);
-      padding: 6px;
-      border-radius: var(--radius-lg);
-      border: 1px solid var(--border-subtle);
-    }
-
-    @media (max-width: 600px) {
-      .dashboard-tabs {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    .dash-tab-btn {
-      background: transparent;
-      border: none;
-      color: var(--text-secondary);
-      font-size: 13px;
-      font-weight: 700;
-      padding: 10px 8px;
-      border-radius: var(--radius-md);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: all 0.2s ease;
-    }
-
-    .dash-tab-btn.active {
-      background: var(--bg-card);
-      color: var(--text-primary);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-      border: 1px solid var(--border-highlight);
-    }
-
-    /* Tab Sections */
-    .tab-content-panel {
-      display: none;
-      flex-direction: column;
-      gap: 20px;
-    }
-
-    .tab-content-panel.active {
-      display: flex;
-    }
-
-    /* File Grid */
-    .files-list-container {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .file-stream-item {
-      background: var(--bg-card);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-lg);
-      padding: 16px 18px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      transition: all 0.2s ease;
-    }
-
-    .file-stream-item:hover {
-      border-color: var(--border-highlight);
-      background: var(--bg-card-hover);
-      transform: translateY(-2px);
-    }
-
-    .file-item-left {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      min-width: 0;
-    }
-
-    .file-type-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: var(--radius-md);
-      background: rgba(59, 130, 246, 0.12);
-      border: 1px solid rgba(59, 130, 246, 0.25);
-      color: var(--accent-blue);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
-      flex-shrink: 0;
-    }
-
-    .file-item-details {
-      min-width: 0;
-    }
-
-    .file-item-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--text-primary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .file-item-meta {
-      font-size: 11px;
-      color: var(--text-muted);
-      margin-top: 3px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .file-item-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-shrink: 0;
-    }
-
-    .btn-item-action {
-      padding: 8px 12px;
-      border-radius: var(--radius-sm);
-      font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      text-decoration: none;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      border: 1px solid transparent;
-      transition: all 0.15s ease;
-    }
-
-    .btn-item-action.play {
-      background: var(--accent-blue);
-      color: #FFF;
-    }
-
-    .btn-item-action.download {
-      background: rgba(16, 185, 129, 0.12);
-      border-color: rgba(16, 185, 129, 0.25);
-      color: #10B981;
-    }
-
-    .btn-item-action.copy {
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--text-secondary);
-    }
-
-    .empty-state-card {
-      background: var(--bg-card);
-      border: 1px dashed var(--border-highlight);
-      border-radius: var(--radius-xl);
-      padding: 48px 24px;
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .empty-icon {
-      font-size: 48px;
-    }
-
-    .empty-title {
-      font-size: 18px;
-      font-weight: 800;
-      color: var(--text-primary);
-    }
-
-    .empty-desc {
-      font-size: 13px;
-      color: var(--text-secondary);
-      max-width: 380px;
-      line-height: 1.5;
-    }
-
-    /* Embedded Player Stage */
-    .embedded-player-container {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .embedded-player-title {
-      font-size: 16px;
-      font-weight: 800;
-      color: var(--text-primary);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    /* Cloud Metrics Panel */
-    .metrics-dashboard-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-
-    @media (max-width: 600px) {
-      .metrics-dashboard-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .metric-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-lg);
-      padding: 18px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .metric-val {
-      font-size: 26px;
-      font-weight: 800;
-      font-family: 'JetBrains Mono', monospace;
-      color: var(--accent-blue);
-    }
-
-    .metric-lbl {
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-  </style>
+  <!-- Application Stylesheet -->
+  <link rel="stylesheet" href="/static/app.css">
 </head>
-<body class="cinema-theme">
+<body>
 
-  <!-- Header -->
-  <header class="app-header">
-    <div class="header-left">
-      <div class="brand-badge">
-        <span class="brand-dot"></span>
-        <span class="brand-name">{{brand_name}}</span>
-      </div>
-    </div>
-    <div class="header-right">
-      <span class="badge-engine">⚡ WebApp Online</span>
-      <span class="badge-status">Active</span>
-    </div>
-  </header>
+  <div class="app-shell">
 
-  <!-- Main Container -->
-  <main class="app-container">
-
-    <!-- Top Greeting Banner -->
-    <section class="dashboard-header">
-      <div class="user-greeting-card">
-        <div class="user-profile">
-          <div class="user-avatar" id="uAvatar">K</div>
-          <div class="user-info">
-            <h2 id="uName">Welcome to Kayi Stream!</h2>
-            <p id="uStatus">Telegram Cloud Streaming Hub · 0-Disk RAM Engine</p>
+    <!-- Global App Header -->
+    <header class="app-header">
+      <div class="header-inner">
+        <div class="header-left">
+          <!-- Official Logo Container -->
+          <div class="brand-logo-container" aria-label="Kayi Stream Logo">
+            <img class="brand-logo-img" src="/static/logo.png" alt="Kayi Stream Logo">
+          </div>
+          <div class="brand-title-wrap">
+            <span class="brand-title">Kayi Stream</span>
+            <span class="brand-ecosystem-tag">by Kayi Bots</span>
           </div>
         </div>
-        <div class="quick-stats-badge">
-          <span class="badge-count" id="activeFilesCount">0</span>
-          <span class="badge-label">Active Links</span>
+        <div class="header-right">
+          <div class="user-profile-badge" id="userProfileBadge" style="display: none;">
+            <div class="user-avatar-circle" id="userAvatar">K</div>
+          </div>
         </div>
       </div>
+    </header>
 
-      <!-- Quick Search / Stream Box -->
-      <div class="stream-search-bar">
-        <input type="text" class="search-input" id="streamInput" placeholder="Enter File Ref ID (e.g. 21112026001) or URL to play...">
-        <button class="btn-search" id="btnStreamNow">
-          <span>▶</span>
-          <span>Play Now</span>
-        </button>
-      </div>
+    <!-- Main Content Area -->
+    <main class="app-container">
 
-      <!-- Navigation Tabs -->
-      <nav class="dashboard-tabs">
-        <button class="dash-tab-btn active" data-tab="files">
-          <span>📂</span>
-          <span>My Files</span>
-        </button>
-        <button class="dash-tab-btn" data-tab="player">
-          <span>🎬</span>
-          <span>Live Player</span>
-        </button>
-        <button class="dash-tab-btn" data-tab="metrics">
-          <span>📊</span>
-          <span>Cloud Stats</span>
-        </button>
-        <button class="dash-tab-btn" data-tab="guide">
-          <span>📖</span>
-          <span>How It Works</span>
-        </button>
-      </nav>
-    </section>
+      <!-- ====================================================================
+           VIEW 1: DASHBOARD / MY FILES
+           ==================================================================== -->
+      <section class="view-panel active" id="viewDashboard">
 
-    <!-- Tab 1: My Active Files Panel -->
-    <section class="tab-content-panel active" id="tab-files">
-      <div class="files-list-container" id="filesList">
-        <!-- Dynamically injected via API -->
-        <div class="empty-state-card" id="loadingState">
-          <div class="pulse-spinner"></div>
-          <h3 class="empty-title">Connecting to Cloud...</h3>
-          <p class="empty-desc">Fetching your active streaming links from Telegram.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- Tab 2: Embedded Live Player Panel -->
-    <section class="tab-content-panel" id="tab-player">
-      <div class="embedded-player-container">
-        <div class="embedded-player-title" id="nowPlayingTitle">
-          <span>🎬</span> <span id="npName">No file selected. Tap a file below to start streaming.</span>
+        <!-- Welcome Banner -->
+        <div class="welcome-hero">
+          <h1 class="welcome-greeting" id="userGreeting">Welcome to Kayi Stream</h1>
+          <p class="welcome-subtitle">Your files, ready whenever you are.</p>
         </div>
 
-        <!-- Video Player Stage -->
-        <div class="stage-wrapper" id="videoStage">
-          <video id="mainVideo" playsinline preload="metadata"></video>
+        <!-- Search Bar -->
+        <div class="search-container">
+          <div class="search-input-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+            </svg>
+            <input type="text" class="search-field" id="searchInput" placeholder="Search files or paste a link" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+            <button class="search-clear-btn" id="searchClearBtn" aria-label="Clear search">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>
+              </svg>
+            </button>
+          </div>
+        </div>
 
-          <button class="big-play-btn" id="bigPlayBtn" aria-label="Play video">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          </button>
+        <!-- Section Header -->
+        <div class="section-header">
+          <h2 class="section-title">My Files</h2>
+          <span class="section-count" id="filesCountBadge">0</span>
+        </div>
 
-          <div class="spinner-overlay" id="spinnerOverlay">
-            <div class="pulse-spinner"></div>
-            <span class="sp-text" id="spText">Buffering Stream...</span>
+        <!-- File Library Grid (Dynamically Populated) -->
+        <div class="file-library-grid" id="fileLibraryGrid"></div>
+
+        <!-- Empty State Card -->
+        <div class="empty-state-card" id="emptyStateCard" style="display: none;">
+          <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+          </svg>
+          <h3 class="empty-state-title">Your library is empty.</h3>
+          <p class="empty-state-desc">Send any video or file to @KayiStreamBot in Telegram to stream and download it anytime.</p>
+        </div>
+
+      </section>
+
+      <!-- ====================================================================
+           VIEW 2: DEDICATED VIDEO PLAYER
+           ==================================================================== -->
+      <section class="view-panel" id="viewPlayer">
+
+        <div class="player-view-wrapper">
+
+          <!-- Top Navigation Bar -->
+          <div class="player-top-bar">
+            <button class="btn-back-library" id="btnBackLibrary" aria-label="Back to library">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m15 18-6-6 6-6"/>
+              </svg>
+              <span>My Files</span>
+            </button>
+            <h2 class="player-video-title" id="playerVideoTitle">Loading video...</h2>
           </div>
 
-          <div class="error-overlay" id="errorOverlay">
-            <div class="error-card">
-              <div class="error-icon">🎬</div>
-              <h3 class="error-title">Browser Playback Notice</h3>
-              <p class="error-desc">This media format is optimized for VLC or external players.</p>
-              <div class="error-launchers" id="errLaunchers"></div>
-            </div>
-          </div>
+          <!-- Cinema Player Canvas Surface -->
+          <div class="player-canvas-container" id="playerCanvas">
 
-          <!-- Controls Bar -->
-          <div class="controls-bar" id="controlsBar">
-            <div class="seek-container" id="seekContainer">
-              <div class="seek-track">
-                <div class="seek-buffer" id="seekBuffer"></div>
-                <div class="seek-fill" id="seekFill"></div>
-              </div>
+            <!-- HTML5 Video Element -->
+            <video class="player-video-element" id="mainVideo" playsinline preload="metadata"></video>
+
+            <!-- Centered Big Play Button -->
+            <button class="player-center-play" id="playerCenterPlay" aria-label="Play Video">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </button>
+
+            <!-- Loading Spinner -->
+            <div class="player-loading-spinner" id="playerLoadingSpinner">
+              <div class="clean-spinner"></div>
             </div>
 
-            <div class="controls-row">
-              <div class="ctrl-group left">
-                <button class="ctrl-btn" id="btnPlay"><svg id="iconPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><svg id="iconPause" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></button>
-                <button class="ctrl-btn" id="btnRewind"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/><text x="12" y="15" font-size="8" font-family="sans-serif" font-weight="bold" text-anchor="middle" fill="currentColor">10</text></svg></button>
-                <button class="ctrl-btn" id="btnForward"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/><text x="12" y="15" font-size="8" font-family="sans-serif" font-weight="bold" text-anchor="middle" fill="currentColor">10</text></svg></button>
-                <button class="ctrl-btn" id="btnMute"><svg id="iconVolHigh" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg><svg id="iconVolMute" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg></button>
-                <div class="time-display"><span id="timeCurrent">0:00</span> / <span id="timeDuration">0:00</span></div>
-              </div>
-              <div class="ctrl-group right">
-                <button class="ctrl-btn" id="btnPip"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 11h-8v6h8v-6zm4 8V5c0-1.1-.9-2-2-2H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 0H3V5h18v14z"/></svg></button>
-                <button class="ctrl-btn" id="btnFullscreen"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
-              </div>
+            <!-- Error State Overlay -->
+            <div class="player-error-overlay" id="playerErrorOverlay">
+              <svg class="player-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+              </svg>
+              <h3 class="player-error-title">This video can't be played in your browser.</h3>
+              <p class="player-error-desc">MKV or multi-audio files can be played instantly in VLC, MX Player, or downloaded directly.</p>
             </div>
+
+            <!-- Tap-to-Reveal Controls Overlay -->
+            <div class="player-controls-overlay" id="playerControlsOverlay">
+
+              <!-- Scrub Timeline -->
+              <div class="timeline-track-container" id="timelineContainer" role="slider" aria-label="Video timeline">
+                <div class="timeline-track-rail">
+                  <div class="timeline-track-buffer" id="timelineBuffer"></div>
+                  <div class="timeline-track-fill" id="timelineFill"></div>
+                </div>
+              </div>
+
+              <!-- Bottom Controls Row -->
+              <div class="controls-bottom-bar">
+
+                <div class="controls-group-left">
+                  <button class="ctrl-btn" id="btnPlay" aria-label="Play / Pause">
+                    <svg id="iconPlay" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                    <svg id="iconPause" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                    </svg>
+                  </button>
+
+                  <button class="ctrl-btn" id="btnRewind" aria-label="Rewind 10 seconds">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
+                    </svg>
+                  </button>
+
+                  <button class="ctrl-btn" id="btnForward" aria-label="Forward 10 seconds">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/>
+                    </svg>
+                  </button>
+
+                  <button class="ctrl-btn" id="btnMute" aria-label="Mute / Unmute">
+                    <svg id="iconVol" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                    </svg>
+                    <svg id="iconMute" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" x2="1" y1="1" y2="23"/>
+                    </svg>
+                  </button>
+
+                  <span class="time-display-label" id="timeDisplayLabel">0:00 / 0:00</span>
+                </div>
+
+                <div class="controls-group-right">
+                  <!-- Speed Selector -->
+                  <button class="ctrl-btn" id="btnSpeed" aria-label="Playback Speed" title="Playback Speed">
+                    <span id="speedLabel" style="font-size: 11px; font-weight: 700;">1.0x</span>
+                  </button>
+
+                  <!-- Prominent Audio & Subtitles Button -->
+                  <button class="btn-tracks-switcher" id="btnTracks" aria-label="Audio & Subtitles">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <span>Audio & Subs</span>
+                    <span class="tracks-badge-dot" id="tracksBadgeDot"></span>
+                  </button>
+
+                  <!-- PiP -->
+                  <button class="ctrl-btn" id="btnPip" aria-label="Picture in Picture">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect width="18" height="14" x="3" y="5" rx="2"/><rect width="8" height="6" x="11" y="11" rx="1"/>
+                    </svg>
+                  </button>
+
+                  <!-- Fullscreen -->
+                  <button class="ctrl-btn" id="btnFullscreen" aria-label="Fullscreen">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                    </svg>
+                  </button>
+                </div>
+
+              </div>
+
+            </div>
+
           </div>
-        </div>
 
-        <div class="action-hero-row" id="playerActionRow" style="display:none;">
-          <a class="action-hero-btn success" id="dlActiveBtn" href="#" download>
-            <span>⚡</span> <span>Download Original</span>
-          </a>
-          <button class="action-hero-btn neutral" id="copyActiveBtn">
-            <span>📋</span> <span>Copy Direct Link</span>
-          </button>
-        </div>
-      </div>
-    </section>
+          <!-- Action Buttons Below Player -->
+          <div class="player-actions-row">
+            <a class="player-btn-main primary" id="btnDownloadMain" href="#" download>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>
+              </svg>
+              <span>Download File</span>
+            </a>
 
-    <!-- Tab 3: Cloud Metrics Panel -->
-    <section class="tab-content-panel" id="tab-metrics">
-      <div class="metrics-dashboard-grid">
-        <div class="metric-card">
-          <span class="metric-val" id="metFiles">-</span>
-          <span class="metric-lbl">Total Registered Files</span>
-        </div>
-        <div class="metric-card">
-          <span class="metric-val" id="metActive">-</span>
-          <span class="metric-lbl">Active Streams</span>
-        </div>
-        <div class="metric-card">
-          <span class="metric-val" id="metStorage">-</span>
-          <span class="metric-lbl">Active Storage Served</span>
-        </div>
-        <div class="metric-card">
-          <span class="metric-val" id="metDownloads">-</span>
-          <span class="metric-lbl">Total Streams / Downloads</span>
-        </div>
-      </div>
-    </section>
+            <button class="player-btn-main secondary" id="btnCopyLinkMain">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+              </svg>
+              <span>Copy Link</span>
+            </button>
 
-    <!-- Tab 4: How It Works Guide -->
-    <section class="tab-content-panel" id="tab-guide">
-      <div class="pro-features-grid">
-        <div class="feat-card">
-          <span class="feat-icon">1️⃣</span>
-          <div class="feat-content">
-            <h4>Send Any Media to Bot</h4>
-            <p>Send videos, songs, or documents up to 4GB directly to @KayiStreamBot.</p>
+            <button class="player-btn-main secondary" id="btnExternalPlayer">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/>
+              </svg>
+              <span>Open in VLC</span>
+            </button>
           </div>
-        </div>
-        <div class="feat-card">
-          <span class="feat-icon">2️⃣</span>
-          <div class="feat-content">
-            <h4>Open in Telegram Mini App</h4>
-            <p>Tap "Open App" at the bottom of the chat to browse and stream all your media.</p>
-          </div>
-        </div>
-        <div class="feat-card">
-          <span class="feat-icon">3️⃣</span>
-          <div class="feat-content">
-            <h4>Stream & Download at High Speed</h4>
-            <p>Watch with instant seek in browser, or open in VLC, MX Player, or PotPlayer.</p>
-          </div>
-        </div>
-      </div>
-    </section>
 
-  </main>
+        </div>
 
-  <!-- Floating Toast -->
-  <div class="floating-toast" id="toastNotice">
-    <span class="toast-icon">✓</span>
-    <span class="toast-msg">Copied to clipboard</span>
+      </section>
+
+    </main>
+
   </div>
 
-  <script src="/static/dashboard.js"></script>
+  <!-- ====================================================================
+       AUDIO & SUBTITLE SWITCHER BOTTOM SHEET / MODAL
+       ==================================================================== -->
+  <div class="track-modal-backdrop" id="trackModalBackdrop"></div>
+  <div class="track-sheet-container" id="trackSheetContainer">
+    <div class="track-sheet-drag-handle"></div>
+
+    <div class="track-sheet-header">
+      <h3 class="track-sheet-title">Audio & Subtitles</h3>
+      <button class="track-sheet-close-btn" id="btnCloseTrackSheet" aria-label="Close track settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Segmented Tabs -->
+    <div class="track-segmented-nav">
+      <button class="track-tab-btn active" id="tabBtnAudio">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
+        </svg>
+        <span>Audio</span>
+      </button>
+      <button class="track-tab-btn" id="tabBtnSubs">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span>Subtitles</span>
+      </button>
+    </div>
+
+    <!-- Content Area -->
+    <div class="track-tab-content-area">
+
+      <!-- Tab 1: Audio Tracks -->
+      <div class="track-content-section active" id="trackSectionAudio">
+        <span class="track-section-label">Audio Language</span>
+        <div id="audioTracksList"></div>
+      </div>
+
+      <!-- Tab 2: Subtitle Tracks -->
+      <div class="track-content-section" id="trackSectionSubs">
+        <span class="track-section-label">Subtitles</span>
+        <div id="subTracksList"></div>
+
+        <!-- Subtitle Appearance -->
+        <div class="sub-appearance-box">
+          <span class="track-section-label">Text Size</span>
+          <div class="sub-size-segmented-wrap">
+            <button class="sub-size-pill" data-size="small">Small</button>
+            <button class="sub-size-pill active" data-size="normal">Normal</button>
+            <button class="sub-size-pill" data-size="large">Large</button>
+          </div>
+
+          <div class="sub-preview-card">
+            <span class="sub-preview-text" id="subPreviewText">Subtitle preview text</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       CONFIRMATION DIALOG (File Removal)
+       ==================================================================== -->
+  <div class="confirm-dialog-backdrop" id="confirmBackdrop">
+    <div class="confirm-dialog-card">
+      <h4 class="confirm-dialog-title">Remove this file?</h4>
+      <p class="confirm-dialog-msg">This will remove the file from your library and delete its active streaming link.</p>
+      <div class="confirm-dialog-actions">
+        <button class="btn-dialog cancel" id="btnCancelDelete">Cancel</button>
+        <button class="btn-dialog confirm" id="btnConfirmDelete">Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Toast Notification -->
+  <div class="app-toast-pill" id="toastPill">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
+    <span id="toastMsg">Link copied</span>
+  </div>
+
+  <!-- Injected Initial Data (Optional) -->
+  <script>
+    // Server can inject window.__INITIAL_FILE__ if direct /watch/{id} URL is loaded
+    {{initial_script}}
+  </script>
+
+  <!-- Application Script -->
+  <script src="/static/app.js"></script>
 </body>
 </html>

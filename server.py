@@ -82,31 +82,14 @@ def detect_quality_tag(file_name: str, file_size: int) -> str:
     return "Direct"
 
 async def handle_root(request: web.Request) -> web.Response:
-    dashboard_path = os.path.join(STATIC_DIR, "dashboard.html")
-    if os.path.exists(dashboard_path):
-        with open(dashboard_path, "r", encoding="utf-8") as f:
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
-        html = html.replace("{{brand_name}}", BRAND_NAME)
+        html = html.replace("{{initial_script}}", "")
         return web.Response(text=html, content_type="text/html")
 
-    stats = await db.get_global_stats()
-    storage_fmt = format_file_size(stats["active_bytes"])
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0B0C10">
-<title>{BRAND_NAME}</title>
-</head>
-<body style="background:#0B0C10;color:#E6EDF3;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
-  <div style="text-align:center;padding:24px;">
-    <h1>{BRAND_NAME} Hub</h1>
-    <p style="color:#8B949E;margin-top:8px;">Active Streams: {stats['active_files']} · Storage: {storage_fmt}</p>
-  </div>
-</body>
-</html>"""
-    return web.Response(text=html, content_type="text/html")
+    return web.Response(text="Kayi Stream App Ready", content_type="text/plain")
 
 async def handle_api_user_files(request: web.Request) -> web.Response:
     user_id_str = request.query.get("user_id")
@@ -139,6 +122,16 @@ async def handle_api_user_files(request: web.Request) -> web.Response:
             "dl_url": f"{base_url}/dl/{disp_id}"
         })
     return web.json_response({"status": "success", "count": len(formatted), "files": formatted})
+
+async def handle_api_delete_file(request: web.Request) -> web.Response:
+    identifier = request.match_info.get("identifier")
+    user_id_str = request.query.get("user_id")
+    user_id = int(user_id_str) if user_id_str and user_id_str.isdigit() else None
+    
+    success = await db.delete_file_by_id_or_token(identifier, user_id=user_id)
+    if success:
+        return web.json_response({"status": "success", "message": "File removed successfully"})
+    return web.json_response({"status": "error", "message": "File not found or unauthorized"}, status=404)
 
 async def handle_api_stats(request: web.Request) -> web.Response:
     stats = await db.get_global_stats()
@@ -192,14 +185,13 @@ async def handle_watch(request: web.Request) -> web.Response:
     record = await db.get_file_by_id_or_token(identifier)
     if not record:
         return web.Response(
-            text="""<!DOCTYPE html><html><body style="background:#FFFFFF;color:#1D1D1F;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
-            <div style="text-align:center;padding:24px;"><h1>Link expired or not found</h1><p style="color:#6E6E73;margin-top:8px;">This link has expired or has been removed.</p></div></body></html>""",
+            text="""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Link Expired · Kayi Stream</title><link rel="stylesheet" href="/static/app.css"></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;background:#F8FAFC;"><div style="background:#FFF;border:1px solid #E2E8F0;border-radius:16px;padding:36px 32px;text-align:center;max-width:380px;box-shadow:0 4px 20px rgba(0,0,0,0.04);"><h2 style="font-size:18px;font-weight:700;color:#111827;margin-bottom:8px;">Link Expired or Not Found</h2><p style="color:#64748B;font-size:14px;margin-bottom:20px;">This streaming link has expired or has been removed from the library.</p><a href="/" style="display:inline-block;padding:10px 18px;background:#DC2626;color:#FFF;border-radius:10px;font-weight:600;font-size:13px;text-decoration:none;">Go to Home</a></div></body></html>""",
             content_type="text/html",
             status=404
         )
 
     f_id = record["id"]
-    token = record["token"]
+    disp_id = record.get("display_id") or str(f_id)
     file_name = record["file_name"]
     file_size = record["file_size"]
     file_size_fmt = format_file_size(file_size)
@@ -208,47 +200,33 @@ async def handle_watch(request: web.Request) -> web.Response:
     quality_label = detect_quality_tag(file_name, file_size)
 
     server_base = get_server_url()
-    stream_url = f"{server_base}/stream/{token}"
-    dl_url = f"{server_base}/dl/{token}"
+    stream_url = f"{server_base}/stream/{disp_id}"
+    dl_url = f"{server_base}/dl/{disp_id}"
 
-    # Third-party player schemes
-    clean_stream_url = stream_url.replace("https://", "").replace("http://", "")
-    vlc_url = f"vlc://{clean_stream_url}"
-    mx_url = f"intent:{stream_url}#Intent;package=com.mxtech.videoplayer.ad;type=video/*;S.title={file_name};end"
-    potplayer_url = f"potplayer://{stream_url}"
-
-    file_data_json = json.dumps({
+    initial_file = {
         "id": f_id,
+        "display_id": disp_id,
         "name": file_name,
-        "size": file_size_fmt,
+        "size": file_size,
+        "size_fmt": file_size_fmt,
         "format": fmt_label,
+        "category": get_media_category(record["mime_type"], file_name),
         "quality": quality_label,
-        "stream": stream_url,
-        "download": dl_url
-    })
+        "stream_url": stream_url,
+        "dl_url": dl_url
+    }
 
-    # Read template from static/index.html
-    template_path = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(template_path):
-        with open(template_path, "r", encoding="utf-8") as f:
-            template = f.read()
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
     else:
-        template = "<html><body><h1>Player template missing</h1></body></html>"
+        html = "<html><body><h1>App template not found</h1></body></html>"
 
-    # Replace template variables
-    html = template.replace("{{file_name}}", file_name)
-    html = html.replace("{{brand_name}}", BRAND_NAME)
-    html = html.replace("{{file_id}}", str(f_id))
-    html = html.replace("{{file_size}}", file_size_fmt)
-    html = html.replace("{{file_format}}", fmt_label)
-    html = html.replace("{{quality_tag}}", quality_label)
-    html = html.replace("{{download_url}}", dl_url)
-    html = html.replace("{{vlc_url}}", vlc_url)
-    html = html.replace("{{mx_url}}", mx_url)
-    html = html.replace("{{potplayer_url}}", potplayer_url)
-    html = html.replace("{{file_data_json}}", file_data_json)
+    inject_js = f"window.__INITIAL_FILE__ = {json.dumps(initial_file)};"
+    html = html.replace("{{initial_script}}", inject_js)
 
-    # Trigger background probe so tracks and HLS are ready early
+    # Prewarm media in background
     asyncio.create_task(_prewarm_media(f_id, dl_url))
 
     return web.Response(text=html, content_type="text/html")
@@ -519,6 +497,8 @@ async def start_server():
     app.router.add_get("/api/user/files", handle_api_user_files)
     app.router.add_get("/api/stats", handle_api_stats)
     app.router.add_get("/api/file/{identifier}", handle_api_file_info)
+    app.router.add_delete("/api/file/{identifier}", handle_api_delete_file)
+    app.router.add_post("/api/file/{identifier}/delete", handle_api_delete_file)
 
     # API endpoints for tracks & subtitles
     app.router.add_get("/api/media/{identifier}/tracks", handle_get_tracks)

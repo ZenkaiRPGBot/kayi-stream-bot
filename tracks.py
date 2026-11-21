@@ -148,13 +148,12 @@ async def probe_file(file_id: int | str, stream_url: str) -> dict:
     elif len(audio_list) == 0:
         has_compatible_audio = True
 
-    if (not is_mkv) and is_browser_video and has_single_audio and has_compatible_audio:
-        mode = "direct"
-    else:
-        mode = "hls"
+    # Direct progressive mode for instant, glitch-free start (<400ms)
+    mode = "direct"
 
     result = {
         "mode": mode,
+        "is_mkv": is_mkv,
         "video": video_info,
         "audio": audio_list,
         "subtitles": sub_list
