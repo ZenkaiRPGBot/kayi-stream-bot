@@ -24,11 +24,15 @@ def get_server_url() -> str:
     custom = os.getenv("SERVER_URL")
     if custom and "localhost" not in custom and "127.0.0.1" not in custom:
         return custom.rstrip("/")
-    # 2. Render auto URL
+    # 2. Hugging Face Spaces auto URL
+    space_host = os.getenv("SPACE_HOST")
+    if space_host:
+        return f"https://{space_host}".rstrip("/")
+    # 3. Render auto URL
     render_url = os.getenv("RENDER_EXTERNAL_URL")
     if render_url:
         return render_url.rstrip("/")
-    # 3. Local cloudflared tunnel
+    # 4. Local cloudflared tunnel
     tunnel_file = os.path.join(os.path.dirname(__file__), "tunnel_url.txt")
     if os.path.exists(tunnel_file):
         try:
@@ -38,11 +42,13 @@ def get_server_url() -> str:
                     return t_url.rstrip("/")
         except Exception:
             pass
-    return (os.getenv("SERVER_URL") or "http://localhost:8081").rstrip("/")
+    return (os.getenv("SERVER_URL") or "http://localhost:7860").rstrip("/")
 
 SERVER_URL = get_server_url()
-PORT = int(os.getenv("PORT", "8081"))
+PORT = int(os.getenv("PORT", "7860"))
 PING_URL = os.getenv("PING_URL") or os.getenv("RENDER_EXTERNAL_URL")
+if not PING_URL and os.getenv("SPACE_HOST"):
+    PING_URL = f"https://{os.getenv('SPACE_HOST')}"
 
 # Link expiration (in hours)
 LINK_EXPIRY_HOURS = 24

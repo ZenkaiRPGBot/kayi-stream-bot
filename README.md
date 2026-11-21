@@ -1,3 +1,12 @@
+---
+title: Kayi Stream
+emoji: 🎬
+colorFrom: red
+colorTo: slate
+sdk: docker
+app_port: 7860
+---
+
 # Kayi Stream — File to Link & Streaming Player
 
 A minimal, high-performance Telegram File-to-Link bot and streaming media player with multi-audio and subtitle track selection. Part of the **@KayiBots** umbrella.
