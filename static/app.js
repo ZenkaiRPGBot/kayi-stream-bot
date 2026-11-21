@@ -37,36 +37,16 @@
   // DOM Elements - Player View
   const btnBackLibrary = document.getElementById('btnBackLibrary');
   const playerVideoTitle = document.getElementById('playerVideoTitle');
-  const mainVideo = document.getElementById('mainVideo');
+  const moviPlayer = document.getElementById('moviPlayer');
+  const nativeFallback = document.getElementById('nativeFallback');
   const playerCanvas = document.getElementById('playerCanvas');
-  const playerCenterPlay = document.getElementById('playerCenterPlay');
   const playerLoadingSpinner = document.getElementById('playerLoadingSpinner');
   const playerErrorOverlay = document.getElementById('playerErrorOverlay');
-  const playerControlsOverlay = document.getElementById('playerControlsOverlay');
-  const timelineContainer = document.getElementById('timelineContainer');
-  const timelineBuffer = document.getElementById('timelineBuffer');
-  const timelineFill = document.getElementById('timelineFill');
-
-  // Player Buttons
-  const btnPlay = document.getElementById('btnPlay');
-  const iconPlay = document.getElementById('iconPlay');
-  const iconPause = document.getElementById('iconPause');
-  const btnRewind = document.getElementById('btnRewind');
-  const btnForward = document.getElementById('btnForward');
-  const btnMute = document.getElementById('btnMute');
-  const iconVol = document.getElementById('iconVol');
-  const iconMute = document.getElementById('iconMute');
-  const timeDisplayLabel = document.getElementById('timeDisplayLabel');
-  const btnSpeed = document.getElementById('btnSpeed');
-  const speedLabel = document.getElementById('speedLabel');
-  const btnTracks = document.getElementById('btnTracks');
-  const tracksBadgeDot = document.getElementById('tracksBadgeDot');
-  const btnPip = document.getElementById('btnPip');
-  const btnFullscreen = document.getElementById('btnFullscreen');
 
   // Player Bottom Action Buttons
   const btnDownloadMain = document.getElementById('btnDownloadMain');
   const btnCopyLinkMain = document.getElementById('btnCopyLinkMain');
+  const btnTracksBottom = document.getElementById('btnTracksBottom');
   const btnExternalPlayer = document.getElementById('btnExternalPlayer');
 
   // Audio & Subtitle Track Modal / Bottom Sheet
@@ -172,9 +152,11 @@
   }
 
   function savePlaybackProgress() {
-    if (!currentActiveFile || !mainVideo) return;
-    const cur = mainVideo.currentTime;
-    const dur = mainVideo.duration;
+    if (!currentActiveFile) return;
+    const playerEl = (moviPlayer && moviPlayer.style.display !== 'none') ? moviPlayer : nativeFallback;
+    if (!playerEl) return;
+    const cur = playerEl.currentTime;
+    const dur = playerEl.duration;
     if (cur > 3 && isFinite(dur) && cur < dur - 8) {
       const key = getFileProgressKey(currentActiveFile);
       if (key) {
@@ -191,9 +173,13 @@
     if (!key) return;
     try {
       const saved = parseFloat(localStorage.getItem(key));
-      if (saved && saved > 3 && isFinite(mainVideo.duration) && saved < mainVideo.duration - 8) {
+      const playerEl = (moviPlayer && moviPlayer.style.display !== 'none') ? moviPlayer : nativeFallback;
+      const dur = playerEl?.duration;
+      if (saved && saved > 3 && isFinite(dur) && dur > 0 && saved < dur - 8) {
         hasResumedCurrentVideo = true;
-        mainVideo.currentTime = saved;
+        if (playerEl) {
+          playerEl.currentTime = saved;
+        }
         showToast(`Resumed from ${formatTime(saved)}`);
       }
     } catch (_) {}
@@ -227,8 +213,11 @@
     viewDashboard.classList.add('active');
     viewPlayer.classList.remove('active');
     closeTrackSheet();
-    if (mainVideo) {
-      mainVideo.pause();
+    if (moviPlayer) {
+      try { moviPlayer.pause(); } catch (_) {}
+    }
+    if (nativeFallback) {
+      try { nativeFallback.pause(); } catch (_) {}
     }
     if (tg?.BackButton) {
       tg.BackButton.hide();
@@ -247,8 +236,6 @@
 
     // Set player metadata
     playerVideoTitle.textContent = file.name;
-    btnDownloadMain.href = file.dl_url;
-    btnDownloadMain.setAttribute('download', file.name);
     btnDownloadMain.onclick = (e) => {
       e.preventDefault();
       triggerBrowserDownload(file.dl_url);
@@ -258,14 +245,21 @@
       copyToClipboard(file.stream_url);
     };
 
+    if (btnTracksBottom) {
+      btnTracksBottom.onclick = (e) => {
+        e.preventDefault();
+        populateTrackSheetFromMovi();
+      };
+    }
+
     btnExternalPlayer.onclick = () => {
       openExternalPlayerModal(file);
     };
 
-    // Load and play video
+    // Load and play video in Movi WebAssembly Player
     loadVideoSource(file);
 
-    // Probe tracks
+    // Probe tracks for backup info
     probeMediaTracks(file.display_id || file.id);
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -488,303 +482,590 @@
   });
 
   // ==============================================================================
-  // VIDEO PLAYER ENGINE (Instant Progressive Stream, <400ms Start)
+  // MOVI PLAYER + JASSUB LIBASS SUBTITLE ENGINE (WASM + WebCodecs)
   // ==============================================================================
+
+  // JASSUB Worker URL Loader
+  let jassubWorkerBlobUrl = null;
+  let jassubWorkerPromise = null;
+  async function getJassubWorkerUrl() {
+    if (jassubWorkerBlobUrl) return jassubWorkerBlobUrl;
+    if (jassubWorkerPromise) return jassubWorkerPromise;
+    jassubWorkerPromise = (async () => {
+      try {
+        const res = await fetch('https://cdn.jsdelivr.net/npm/jassub/dist/jassub-worker.js');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const code = await res.text();
+        const blob = new Blob([code], { type: 'application/javascript' });
+        jassubWorkerBlobUrl = URL.createObjectURL(blob);
+        return jassubWorkerBlobUrl;
+      } catch (err) {
+        console.warn('[JASSUB] Worker blob fallback:', err);
+        return 'https://cdn.jsdelivr.net/npm/jassub/dist/jassub-worker.js';
+      }
+    })();
+    return jassubWorkerPromise;
+  }
+
+  // MoviJassubSubtitleRenderer class
+  class MoviJassubSubtitleRenderer {
+    constructor() {
+      this.jassub = null;
+      this.overlay = null;
+      this.canvas = null;
+      this.delay = 0;
+      this.activeTrack = null;
+      this.decoder = new TextDecoder('utf-8');
+      this.seenPackets = new Set();
+      this.readOrder = 0;
+      this.pendingPackets = [];
+      this.initPromise = null;
+      this.currentRenderW = 0;
+      this.currentRenderH = 0;
+    }
+
+    mount(overlay) {
+      this.overlay = overlay;
+      const parent = moviPlayer.shadowRoot || (overlay && overlay.parentNode) || playerCanvas;
+      if (!this.canvas) {
+        this.canvas = document.createElement('canvas');
+        this.canvas.className = 'jassub-subtitle-canvas';
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.top = '0';
+        this.canvas.style.left = '0';
+        this.canvas.style.width = '100%';
+        this.canvas.style.height = '100%';
+        this.canvas.style.pointerEvents = 'none';
+        this.canvas.style.zIndex = '10';
+        this.canvas.style.display = 'block';
+        this.canvas.width = 1920;
+        this.canvas.height = 1080;
+        this.currentRenderW = 1920;
+        this.currentRenderH = 1080;
+      }
+      if (parent && this.canvas.parentNode !== parent) {
+        parent.appendChild(this.canvas);
+      }
+    }
+
+    async configure(track, extradata) {
+      this.activeTrack = track;
+      this.seenPackets.clear();
+      this.readOrder = 0;
+
+      const codec = (track?.codec || '').toLowerCase();
+      if (!codec.includes('ass') && !codec.includes('ssa')) {
+        if (this.canvas) this.canvas.style.display = 'none';
+        return;
+      }
+
+      if (this.canvas) this.canvas.style.display = 'block';
+
+      let headerText = '';
+      if (extradata && extradata.length > 0) {
+        headerText = this.decoder.decode(extradata);
+      } else {
+        headerText = '[Script Info]\nTitle: Subtitles\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,24,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
+      }
+
+      if (!headerText.includes('[Events]')) {
+        headerText += '\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
+      }
+
+      if (this.initPromise) {
+        try { await this.initPromise; } catch (_) {}
+      }
+
+      if (!this.jassub && window.JASSUB && this.canvas) {
+        this.initPromise = (async () => {
+          const defaultFontUrl = 'https://cdn.jsdelivr.net/npm/jassub/dist/default.woff2';
+          const workerUrl = await getJassubWorkerUrl();
+
+          const vTrack = moviPlayer.player?.trackManager?.getActiveVideoTrack?.();
+          const vW = vTrack?.width || 1920;
+          const vH = vTrack?.height || 1080;
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          const rect = moviPlayer.getBoundingClientRect();
+          const dispW = Math.round(rect.width) || vW;
+          const dispH = Math.round(rect.height) || vH;
+
+          const targetW = Math.min(3840, Math.max(vW, Math.round(dispW * dpr)));
+          const targetH = Math.min(2160, Math.max(vH, Math.round(dispH * dpr)));
+
+          this.canvas.width = targetW;
+          this.canvas.height = targetH;
+          this.currentRenderW = targetW;
+          this.currentRenderH = targetH;
+
+          this.jassub = new window.JASSUB({
+            canvas: this.canvas,
+            subContent: headerText,
+            workerUrl: workerUrl,
+            wasmUrl: 'https://cdn.jsdelivr.net/npm/jassub/dist/jassub-worker.wasm',
+            modernWasmUrl: 'https://cdn.jsdelivr.net/npm/jassub/dist/jassub-worker-modern.wasm',
+            legacyWasmUrl: 'https://cdn.jsdelivr.net/npm/jassub/dist/jassub-worker.wasm.js',
+            fonts: [defaultFontUrl],
+            availableFonts: {
+              'liberation sans': defaultFontUrl,
+              'default': defaultFontUrl,
+              'arial': defaultFontUrl,
+              'sans-serif': defaultFontUrl,
+              'trebuchet ms': defaultFontUrl,
+              'dejavu sans': defaultFontUrl,
+              'tahoma': defaultFontUrl,
+              'verdana': defaultFontUrl
+            },
+            fallbackFont: 'liberation sans',
+            useLocalFonts: false,
+            onDemandRender: false,
+            useSimd: true
+          });
+          this.jassub._video = { videoWidth: vW, videoHeight: vH };
+          this.jassub._videoWidth = vW;
+          this.jassub._videoHeight = vH;
+
+          if (this.pendingPackets.length > 0) {
+            const queued = this.pendingPackets.slice();
+            this.pendingPackets = [];
+            for (const pkt of queued) {
+              this.pushPacket(pkt);
+            }
+          }
+        })();
+
+        try {
+          await this.initPromise;
+        } catch (e) {
+          console.error('[JASSUB] Engine init error:', e);
+        } finally {
+          this.initPromise = null;
+        }
+      } else if (this.jassub) {
+        try {
+          this.jassub.setTrack(headerText);
+        } catch (e) {
+          console.warn('[JASSUB] setTrack error:', e);
+        }
+      }
+    }
+
+    pushPacket(pkt) {
+      if (!pkt || !pkt.data) return;
+      if (!this.jassub) {
+        this.pendingPackets.push(pkt);
+        return;
+      }
+      try {
+        const raw = this.decoder.decode(pkt.data).trim();
+        if (!raw) return;
+
+        let startMs = Math.round(((pkt.timestamp || 0) + this.delay) * 1000);
+        let durationMs = Math.round((pkt.duration && pkt.duration > 0 ? pkt.duration : 5) * 1000);
+
+        let layer = 0, style = 'Default', name = '', marginL = 0, marginR = 0, marginV = 0, effect = '', text = '';
+        let readOrder = ++this.readOrder;
+
+        if (raw.startsWith('Dialogue:')) {
+          const parts = raw.substring(9).trim().split(',');
+          if (parts.length >= 9) {
+            layer = parseInt(parts[0], 10) || 0;
+            style = parts[3] || 'Default';
+            name = parts[4] || '';
+            marginL = parseInt(parts[5], 10) || 0;
+            marginR = parseInt(parts[6], 10) || 0;
+            marginV = parseInt(parts[7], 10) || 0;
+            effect = parts[8] || '';
+            text = parts.slice(9).join(',');
+          } else {
+            text = raw;
+          }
+        } else {
+          const parts = raw.split(',');
+          if (parts.length >= 9) {
+            readOrder = parseInt(parts[0], 10) || readOrder;
+            layer = parseInt(parts[1], 10) || 0;
+            style = parts[2] || 'Default';
+            name = parts[3] || '';
+            marginL = parseInt(parts[4], 10) || 0;
+            marginR = parseInt(parts[5], 10) || 0;
+            marginV = parseInt(parts[6], 10) || 0;
+            effect = parts[7] || '';
+            text = parts.slice(8).join(',');
+          } else {
+            text = raw;
+          }
+        }
+
+        const dedupKey = startMs + '_' + text;
+        if (this.seenPackets.has(dedupKey)) return;
+        this.seenPackets.add(dedupKey);
+
+        this.jassub.createEvent({
+          Start: startMs,
+          Duration: durationMs,
+          ReadOrder: readOrder,
+          Layer: layer,
+          Style: style,
+          Name: name,
+          MarginL: marginL,
+          MarginR: marginR,
+          MarginV: marginV,
+          Effect: effect,
+          Text: text
+        });
+      } catch (e) {
+        console.warn('[JASSUB] Packet error:', e);
+      }
+    }
+
+    render(currentTime, videoWidth, videoHeight) {
+      if (!this.jassub || !this.canvas) return;
+      try {
+        const isPaused = !!moviPlayer.paused;
+        const rate = moviPlayer.playbackRate || 1;
+        this.jassub.setCurrentTime(isPaused, currentTime + this.delay, rate);
+
+        const host = moviPlayer.shadowRoot || (this.overlay && this.overlay.parentNode) || playerCanvas;
+        if (host && this.canvas.parentNode !== host) {
+          host.appendChild(this.canvas);
+        }
+
+        const vW = videoWidth || 1920;
+        const vH = videoHeight || 1080;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const rect = moviPlayer.getBoundingClientRect();
+        const dispW = Math.round(rect.width) || vW;
+        const dispH = Math.round(rect.height) || vH;
+
+        const targetW = Math.min(3840, Math.max(vW, Math.round(dispW * dpr)));
+        const targetH = Math.min(2160, Math.max(vH, Math.round(dispH * dpr)));
+
+        if (this.currentRenderW !== targetW || this.currentRenderH !== targetH) {
+          this.currentRenderW = targetW;
+          this.currentRenderH = targetH;
+          if (!this.jassub._video) {
+            this.jassub._video = { videoWidth: vW, videoHeight: vH };
+          } else {
+            this.jassub._video.videoWidth = vW;
+            this.jassub._video.videoHeight = vH;
+          }
+          this.jassub._videoWidth = vW;
+          this.jassub._videoHeight = vH;
+          if (typeof this.jassub.resize === 'function') {
+            this.jassub.resize(targetW, targetH, 0, 0, isPaused);
+          }
+        }
+      } catch (e) {
+        console.warn('[JASSUB] render error:', e);
+      }
+    }
+
+    setDelay(delaySec) {
+      this.delay = delaySec || 0;
+    }
+
+    clear() {
+      if (this.canvas) {
+        const ctx = this.canvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      }
+    }
+
+    destroy() {
+      this.pendingPackets = [];
+      this.initPromise = null;
+      this.currentRenderW = 0;
+      this.currentRenderH = 0;
+      if (this.jassub) {
+        try { this.jassub.destroy(); } catch (_) {}
+        this.jassub = null;
+      }
+      if (this.canvas && this.canvas.parentNode) {
+        this.canvas.parentNode.removeChild(this.canvas);
+        this.canvas = null;
+      }
+    }
+  }
+
+  let assRenderer = null;
+  let lastAttachedTrackId = null;
+
+  function syncSubtitleRenderer() {
+    if (!window.JASSUB || !moviPlayer) return;
+    try {
+      const inner = moviPlayer.player;
+      if (!inner) return;
+      const track = inner.trackManager?.getActiveSubtitleTrack?.();
+      if (!track) {
+        if (assRenderer) {
+          moviPlayer.setSubtitleRenderer(null);
+          lastAttachedTrackId = null;
+        }
+        return;
+      }
+      const codec = (track.codec || '').toLowerCase();
+      const isAss = codec.includes('ass') || codec.includes('ssa');
+      if (isAss) {
+        if (lastAttachedTrackId === track.id && moviPlayer.player?._customSubtitleRenderer === assRenderer) {
+          return;
+        }
+        if (!assRenderer) {
+          assRenderer = new MoviJassubSubtitleRenderer();
+        }
+        moviPlayer.setSubtitleRenderer(assRenderer);
+        lastAttachedTrackId = track.id;
+      } else {
+        if (assRenderer) {
+          moviPlayer.setSubtitleRenderer(null);
+          lastAttachedTrackId = null;
+        }
+      }
+    } catch (e) {
+      console.warn('[Subtitle] syncSubtitleRenderer error:', e);
+    }
+  }
+
+  // Audio Context Unlocking for Autoplay Policy
+  function unlockAudio() {
+    try {
+      const renderer = moviPlayer?.player?.audioRenderer;
+      if (renderer?.audioContext && renderer.audioContext.state === 'suspended') {
+        renderer.audioContext.resume().catch(() => {});
+      }
+      if (moviPlayer?.player?.audioContext && moviPlayer.player.audioContext.state === 'suspended') {
+        moviPlayer.player.audioContext.resume().catch(() => {});
+      }
+      if (moviPlayer?.shadowRoot) {
+        const overlay = moviPlayer.shadowRoot.querySelector('.movi-unmute-overlay');
+        if (overlay && overlay.style.display !== 'none') {
+          overlay.click();
+        }
+      }
+      moviPlayer._userHasUnmuted = true;
+      moviPlayer._autoMutedForAutoplay = false;
+      moviPlayer.muted = false;
+      moviPlayer.volume = 1;
+      moviPlayer.removeAttribute('muted');
+      if (moviPlayer.player) {
+        if (typeof moviPlayer.player.setMuted === 'function') moviPlayer.player.setMuted(false);
+        if (typeof moviPlayer.player.setVolume === 'function') moviPlayer.player.setVolume(1);
+      }
+      if (typeof moviPlayer.updateVolume === 'function') moviPlayer.updateVolume();
+    } catch (_) {}
+  }
+
+  window.addEventListener('click', unlockAudio, { capture: true });
+  window.addEventListener('touchstart', unlockAudio, { capture: true, passive: true });
+  window.addEventListener('pointerdown', unlockAudio, { capture: true, passive: true });
+  window.addEventListener('keydown', unlockAudio, { capture: true, passive: true });
+
+  let subtitleSelected = false;
+  function autoSelectSubtitle() {
+    if (subtitleSelected || !moviPlayer) return;
+    try {
+      const inner = moviPlayer.player;
+      if (inner) {
+        const activeTrack = inner.trackManager?.getActiveSubtitleTrack?.();
+        if (activeTrack) {
+          subtitleSelected = true;
+          return;
+        }
+        const tracks = typeof inner.getSubtitleTracks === 'function' ? inner.getSubtitleTracks() : [];
+        if (tracks && tracks.length > 0) {
+          let target = tracks.find((t) => {
+            const l = (t.language || t.lang || '').toLowerCase();
+            const b = (t.label || '').toLowerCase();
+            const isDef = !!(t.default || t.isDefault);
+            return isDef && (l === 'eng' || l.startsWith('en') || b.includes('eng') || b.includes('english'));
+          });
+          if (!target) target = tracks.find((t) => !!(t.default || t.isDefault));
+          if (!target) {
+            target = tracks.find((t) => {
+              const l = (t.language || t.lang || '').toLowerCase();
+              const b = (t.label || '').toLowerCase();
+              return l === 'eng' || l.startsWith('en') || b.includes('eng') || b.includes('english');
+            });
+          }
+          if (!target) target = tracks[0];
+
+          if (target && target.id !== undefined) {
+            if (typeof moviPlayer.pickSubtitleTrack === 'function') {
+              moviPlayer.pickSubtitleTrack(target.id);
+            } else if (typeof inner.selectSubtitleTrack === 'function') {
+              inner.selectSubtitleTrack(target.id);
+            }
+            subtitleSelected = true;
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Fallback timer and player loader
+  let fallbackTimeoutTimer = null;
+  let playerReady = false;
+
+  function dismissPlayerLoading() {
+    playerReady = true;
+    playerLoadingSpinner.classList.remove('visible');
+    if (fallbackTimeoutTimer) {
+      clearTimeout(fallbackTimeoutTimer);
+      fallbackTimeoutTimer = null;
+    }
+  }
 
   function loadVideoSource(file) {
     hasResumedCurrentVideo = false;
+    subtitleSelected = false;
+    playerReady = false;
     playerErrorOverlay.classList.remove('visible');
     playerLoadingSpinner.classList.add('visible');
-    playerCenterPlay.classList.remove('hidden');
 
-    // Remove any previous subtitle tracks
-    mainVideo.querySelectorAll('track').forEach((t) => t.remove());
+    // Clear subtitle language preferences so MKV defaults are not suppressed
+    try {
+      localStorage.removeItem('movi-player-subtitlelang');
+      localStorage.removeItem('movi:subtitlelang');
+      sessionStorage.removeItem('movi-player-subtitlelang');
+      sessionStorage.removeItem('movi:subtitlelang');
+    } catch (_) {}
 
-    // Clean progressive streaming URL
-    mainVideo.src = file.stream_url;
-    mainVideo.load();
+    // Reset display
+    if (moviPlayer) {
+      moviPlayer.style.display = 'block';
+      moviPlayer.volume = 1;
+      moviPlayer.muted = false;
+      try { moviPlayer.removeAttribute('muted'); } catch (_) {}
+      moviPlayer.src = file.stream_url;
+      try { moviPlayer.play(); } catch (_) {}
+    }
+    if (nativeFallback) {
+      nativeFallback.style.display = 'none';
+      nativeFallback.pause();
+      nativeFallback.src = '';
+    }
 
-    mainVideo.play().then(() => {
-      playerCenterPlay.classList.add('hidden');
-      resetControlsAutohide();
-    }).catch(() => {
-      // Browser autoplay restriction before user gesture
-      playerLoadingSpinner.classList.remove('visible');
-      playerCenterPlay.classList.remove('hidden');
+    if (fallbackTimeoutTimer) clearTimeout(fallbackTimeoutTimer);
+    fallbackTimeoutTimer = setTimeout(() => {
+      if (!playerReady) {
+        console.warn('[Player] Movi WASM element timeout, trying native fallback');
+        activateNativeFallback(file);
+      }
+    }, 15000);
+  }
+
+  function activateNativeFallback(file) {
+    if (moviPlayer) {
+      try { moviPlayer.pause(); } catch (_) {}
+      moviPlayer.style.display = 'none';
+    }
+    if (nativeFallback) {
+      nativeFallback.style.display = 'block';
+      nativeFallback.src = file.stream_url;
+      nativeFallback.play().then(() => {
+        dismissPlayerLoading();
+      }).catch(() => {
+        dismissPlayerLoading();
+      });
+    }
+  }
+
+  // Player Event Listeners
+  if (moviPlayer) {
+    moviPlayer.addEventListener('loadeddata', () => {
+      dismissPlayerLoading();
+      unlockAudio();
+      autoSelectSubtitle();
+      syncSubtitleRenderer();
+      if (currentActiveFile) checkAndResumeProgress(currentActiveFile);
+    });
+
+    moviPlayer.addEventListener('canplay', () => {
+      dismissPlayerLoading();
+      unlockAudio();
+      autoSelectSubtitle();
+      if (currentActiveFile) checkAndResumeProgress(currentActiveFile);
+    });
+
+    moviPlayer.addEventListener('playing', () => {
+      dismissPlayerLoading();
+      unlockAudio();
+      autoSelectSubtitle();
+    });
+
+    moviPlayer.addEventListener('waiting', () => {
+      playerLoadingSpinner.classList.add('visible');
+    });
+
+    moviPlayer.addEventListener('timeupdate', () => {
+      savePlaybackProgress();
+    });
+
+    moviPlayer.addEventListener('subtitletrackchange', () => {
+      if (moviPlayer.player?.trackManager?.getActiveSubtitleTrack?.()) {
+        subtitleSelected = true;
+      }
+      syncSubtitleRenderer();
+    });
+
+    moviPlayer.addEventListener('error', () => {
+      if (currentActiveFile) {
+        activateNativeFallback(currentActiveFile);
+      } else {
+        playerLoadingSpinner.classList.remove('visible');
+        playerErrorOverlay.classList.add('visible');
+      }
+    });
+
+    moviPlayer.addEventListener('ended', () => {
+      if (currentActiveFile) {
+        const key = getFileProgressKey(currentActiveFile);
+        if (key) {
+          try { localStorage.removeItem(key); } catch (_) {}
+        }
+      }
     });
   }
 
-  function startPlayback() {
-    if (mainVideo.paused || mainVideo.ended) {
-      mainVideo.play().then(() => {
-        playerCenterPlay.classList.add('hidden');
-        resetControlsAutohide();
-      }).catch((err) => {
-        console.warn('[Player] Play error:', err);
-      });
-    }
-    triggerHaptic('light');
+  if (nativeFallback) {
+    nativeFallback.addEventListener('loadeddata', dismissPlayerLoading);
+    nativeFallback.addEventListener('canplay', () => {
+      dismissPlayerLoading();
+      if (currentActiveFile) checkAndResumeProgress(currentActiveFile);
+    });
+    nativeFallback.addEventListener('timeupdate', savePlaybackProgress);
+    nativeFallback.addEventListener('error', () => {
+      playerLoadingSpinner.classList.remove('visible');
+      playerErrorOverlay.classList.add('visible');
+    });
   }
 
-  function togglePlayState() {
-    if (mainVideo.paused || mainVideo.ended) {
-      startPlayback();
-    } else {
-      mainVideo.pause();
-      playerCenterPlay.classList.remove('hidden');
-      playerControlsOverlay.classList.remove('autohide');
+  // Periodic check for MKV subtitle detection during first 8 seconds
+  const subCheckInterval = setInterval(() => {
+    if (viewPlayer.classList.contains('active')) {
+      autoSelectSubtitle();
+      syncSubtitleRenderer();
     }
-    triggerHaptic('light');
-  }
+  }, 350);
+  setTimeout(() => clearInterval(subCheckInterval), 8500);
 
-  // Center Red Play Button
-  playerCenterPlay.addEventListener('click', (e) => {
-    e.stopPropagation();
-    startPlayback();
-  });
-
-  playerCenterPlay.addEventListener('touchend', (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    startPlayback();
-  });
-
-  btnPlay.addEventListener('click', (e) => {
-    e.stopPropagation();
-    togglePlayState();
-  });
-
-  // Tapping anywhere inside the player canvas:
-  // Shows/toggles player controls & settings without interfering with buttons!
-  function handlePlayerSurfaceClick(e) {
-    if (e.target.closest('.ctrl-btn') || 
-        e.target.closest('.btn-tracks-switcher') || 
-        e.target.closest('.timeline-track-container') ||
-        e.target.closest('#playerCenterPlay') ||
-        e.target.closest('#playerErrorOverlay')) {
-      return;
-    }
-
-    if (playerControlsOverlay.classList.contains('autohide')) {
-      resetControlsAutohide();
-    } else {
-      if (!mainVideo.paused) {
-        playerControlsOverlay.classList.add('autohide');
-        clearTimeout(hideControlsTimer);
-      } else {
-        resetControlsAutohide();
-      }
-    }
-    triggerHaptic('light');
-  }
-
-  playerCanvas.addEventListener('click', handlePlayerSurfaceClick);
-
-  mainVideo.addEventListener('play', () => {
-    playerCenterPlay.classList.add('hidden');
-    iconPlay.style.display = 'none';
-    iconPause.style.display = 'block';
-    resetControlsAutohide();
-  });
-
-  mainVideo.addEventListener('pause', () => {
-    playerCenterPlay.classList.remove('hidden');
-    iconPlay.style.display = 'block';
-    iconPause.style.display = 'none';
-    playerControlsOverlay.classList.remove('autohide');
-  });
-
-  mainVideo.addEventListener('waiting', () => {
-    playerLoadingSpinner.classList.add('visible');
-  });
-
-  mainVideo.addEventListener('playing', () => {
-    playerLoadingSpinner.classList.remove('visible');
-  });
-
-  mainVideo.addEventListener('loadedmetadata', () => {
-    if (currentActiveFile) {
-      checkAndResumeProgress(currentActiveFile);
-    }
-  });
-
-  mainVideo.addEventListener('canplay', () => {
-    if (currentActiveFile && !hasResumedCurrentVideo) {
-      checkAndResumeProgress(currentActiveFile);
-    }
-  });
-
-  let lastProgressSaveTime = 0;
-  mainVideo.addEventListener('timeupdate', () => {
-    const cur = mainVideo.currentTime;
-    const dur = mainVideo.duration;
-    timeDisplayLabel.textContent = `${formatTime(cur)} / ${formatTime(dur)}`;
-
-    if (dur && isFinite(dur)) {
-      const pct = (cur / dur) * 100;
-      timelineFill.style.width = pct + '%';
-    }
-
-    // Save playback position periodically
-    const now = Date.now();
-    if (now - lastProgressSaveTime > 2500) {
-      lastProgressSaveTime = now;
-      savePlaybackProgress();
-    }
-  });
-
-  mainVideo.addEventListener('ended', () => {
-    if (currentActiveFile) {
-      const key = getFileProgressKey(currentActiveFile);
-      if (key) {
-        try { localStorage.removeItem(key); } catch (_) {}
-      }
-    }
-  });
-
-  mainVideo.addEventListener('progress', () => {
-    if (mainVideo.buffered.length > 0 && isFinite(mainVideo.duration)) {
-      const end = mainVideo.buffered.end(mainVideo.buffered.length - 1);
-      const pct = (end / mainVideo.duration) * 100;
-      timelineBuffer.style.width = pct + '%';
-    }
-  });
-
-  mainVideo.addEventListener('error', () => {
-    playerLoadingSpinner.classList.remove('visible');
-    playerCenterPlay.classList.add('hidden');
-    playerErrorOverlay.classList.add('visible');
-  });
-
-  // Skips
-  btnRewind.addEventListener('click', (e) => {
-    e.stopPropagation();
-    mainVideo.currentTime = Math.max(0, mainVideo.currentTime - 10);
-    resetControlsAutohide();
-    triggerHaptic('light');
-  });
-
-  btnForward.addEventListener('click', (e) => {
-    e.stopPropagation();
-    mainVideo.currentTime = Math.min(mainVideo.duration || Infinity, mainVideo.currentTime + 10);
-    resetControlsAutohide();
-    triggerHaptic('light');
-  });
-
-  // Timeline scrub (Smooth touch & mouse drag)
-  function scrubTimeline(e) {
-    const rect = timelineContainer.getBoundingClientRect();
-    const clientX = e.touches && e.touches.length > 0 ? e.touches[0].clientX : e.clientX;
-    const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    if (isFinite(mainVideo.duration) && mainVideo.duration > 0) {
-      mainVideo.currentTime = pos * mainVideo.duration;
-      timelineFill.style.width = (pos * 100) + '%';
-    }
-  }
-
-  let isScrubbing = false;
-  timelineContainer.addEventListener('mousedown', (e) => {
-    e.stopPropagation();
-    isScrubbing = true;
-    scrubTimeline(e);
-  });
-
-  timelineContainer.addEventListener('touchstart', (e) => {
-    e.stopPropagation();
-    isScrubbing = true;
-    scrubTimeline(e);
-  }, { passive: true });
-
-  window.addEventListener('mousemove', (e) => {
-    if (isScrubbing) scrubTimeline(e);
-  });
-
-  window.addEventListener('touchmove', (e) => {
-    if (isScrubbing) scrubTimeline(e);
-  }, { passive: true });
-
-  window.addEventListener('mouseup', () => {
-    if (isScrubbing) {
-      isScrubbing = false;
-      savePlaybackProgress();
-    }
-  });
-
-  window.addEventListener('touchend', () => {
-    if (isScrubbing) {
-      isScrubbing = false;
-      savePlaybackProgress();
-    }
-  });
-
-  // Volume / Mute
-  btnMute.addEventListener('click', (e) => {
-    e.stopPropagation();
-    mainVideo.muted = !mainVideo.muted;
-    iconVol.style.display = mainVideo.muted ? 'none' : 'block';
-    iconMute.style.display = mainVideo.muted ? 'block' : 'none';
-    resetControlsAutohide();
-    triggerHaptic('light');
-  });
-
-  // Speed
-  btnSpeed.addEventListener('click', (e) => {
-    e.stopPropagation();
-    currentSpeedIndex = (currentSpeedIndex + 1) % SPEED_OPTIONS.length;
-    const spd = SPEED_OPTIONS[currentSpeedIndex];
-    mainVideo.playbackRate = spd;
-    speedLabel.textContent = `${spd}x`;
-    showToast(`Speed: ${spd}x`);
-    resetControlsAutohide();
-  });
-
-  // PiP & Fullscreen
-  btnPip.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else if (mainVideo.requestPictureInPicture) {
-        await mainVideo.requestPictureInPicture();
-      }
-    } catch (_) {}
-  });
-
-  btnFullscreen.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    } else if (playerCanvas.requestFullscreen) {
-      playerCanvas.requestFullscreen().catch(() => {});
-    }
-  });
-
-  // Controls Autohide on Tap
-  function resetControlsAutohide() {
-    playerControlsOverlay.classList.remove('autohide');
-    clearTimeout(hideControlsTimer);
-    if (!mainVideo.paused) {
-      hideControlsTimer = setTimeout(() => {
-        if (!trackSheetContainer.classList.contains('active')) {
-          playerControlsOverlay.classList.add('autohide');
-        }
-      }, 3500);
-    }
-  }
-
-  playerCanvas.addEventListener('mousemove', resetControlsAutohide);
-  playerCanvas.addEventListener('touchstart', resetControlsAutohide);
-
-  // Keyboard shortcuts (Desktop)
+  // Keyboard Shortcuts (Desktop)
   document.addEventListener('keydown', (e) => {
     if (viewPlayer.classList.contains('active') && !trackSheetContainer.classList.contains('active')) {
+      const activeEl = (moviPlayer && moviPlayer.style.display !== 'none') ? moviPlayer : nativeFallback;
+      if (!activeEl) return;
+
       if (e.code === 'Space') {
         e.preventDefault();
-        togglePlayState();
+        if (activeEl.paused) {
+          activeEl.play().catch(() => {});
+        } else {
+          activeEl.pause();
+        }
       } else if (e.code === 'ArrowLeft') {
-        mainVideo.currentTime = Math.max(0, mainVideo.currentTime - 10);
+        activeEl.currentTime = Math.max(0, activeEl.currentTime - 10);
       } else if (e.code === 'ArrowRight') {
-        mainVideo.currentTime = Math.min(mainVideo.duration || Infinity, mainVideo.currentTime + 10);
+        activeEl.currentTime = Math.min(activeEl.duration || Infinity, activeEl.currentTime + 10);
       }
     }
   });
@@ -797,19 +1078,50 @@
     try {
       const res = await fetch(`/api/media/${identifier}/tracks`);
       currentTracksData = await res.json();
-      renderTrackLists(currentTracksData);
     } catch (e) {
-      console.warn('[Tracks] Probe note:', e);
+      console.warn('[Tracks] Server probe error:', e);
       currentTracksData = { audio: [], subtitles: [] };
-      renderTrackLists(currentTracksData);
     }
   }
 
-  function renderTrackLists(data) {
-    const audioTracks = data.audio || [];
-    const subTracks = data.subtitles || [];
+  function populateTrackSheetFromMovi() {
+    const inner = moviPlayer?.player;
+    let audioTracks = [];
+    let subTracks = [];
+    let currentAudioId = null;
+    let currentSubId = null;
 
-    // Audio list
+    if (inner) {
+      if (typeof inner.getAudioTracks === 'function') {
+        audioTracks = inner.getAudioTracks() || [];
+      }
+      if (typeof inner.getSubtitleTracks === 'function') {
+        subTracks = inner.getSubtitleTracks() || [];
+      }
+      const activeAudio = inner.trackManager?.getActiveAudioTrack?.();
+      if (activeAudio) currentAudioId = activeAudio.id;
+      const activeSub = inner.trackManager?.getActiveSubtitleTrack?.();
+      if (activeSub) currentSubId = activeSub.id;
+    }
+
+    // Fallback to server probed data if demuxer tracks are not populated yet
+    if (audioTracks.length === 0 && currentTracksData?.audio?.length > 0) {
+      audioTracks = currentTracksData.audio.map((a, i) => ({
+        id: i,
+        label: a.language_name || a.title || `Track ${i + 1}`,
+        codec: a.codec || 'AAC',
+        channels: a.channels === 6 ? '5.1' : 'Stereo'
+      }));
+    }
+    if (subTracks.length === 0 && currentTracksData?.subtitles?.length > 0) {
+      subTracks = currentTracksData.subtitles.map((s, i) => ({
+        id: s.index !== undefined ? s.index : i,
+        label: s.language_name || s.title || `Subtitle ${i + 1}`,
+        codec: s.codec || 'ASS'
+      }));
+    }
+
+    // Render Audio Tracks
     audioTracksList.innerHTML = '';
     if (audioTracks.length === 0) {
       audioTracksList.innerHTML = `
@@ -823,10 +1135,11 @@
       `;
     } else {
       audioTracks.forEach((tr, i) => {
+        const isSelected = (currentAudioId !== null) ? (tr.id === currentAudioId) : (i === 0);
         const item = document.createElement('div');
-        item.className = `track-item-row ${i === activeAudioIndex ? 'selected' : ''}`;
-        const name = tr.language_name || tr.title || `Track ${i + 1}`;
-        const desc = `${tr.codec?.toUpperCase() || 'AAC'} • ${tr.channels === 6 ? '5.1 Surround' : 'Stereo'}`;
+        item.className = `track-item-row ${isSelected ? 'selected' : ''}`;
+        const name = tr.label || tr.title || tr.language || `Track ${i + 1}`;
+        const desc = `${(tr.codec || 'AAC').toUpperCase()} • ${tr.channels ? tr.channels : 'Stereo'}`;
 
         item.innerHTML = `
           <div class="track-item-left">
@@ -834,14 +1147,18 @@
             <span class="track-item-desc">${escapeHtml(desc)}</span>
           </div>
           <span class="track-check-indicator">✓</span>
-        </div>
         `;
 
         item.addEventListener('click', () => {
-          activeAudioIndex = i;
-          audioTracksList.querySelectorAll('.track-item-row').forEach((r, idx) => {
-            r.classList.toggle('selected', idx === i);
-          });
+          if (moviPlayer) {
+            if (typeof moviPlayer.pickAudioTrack === 'function') {
+              moviPlayer.pickAudioTrack(tr.id !== undefined ? tr.id : i);
+            } else if (typeof inner?.selectAudioTrack === 'function') {
+              inner.selectAudioTrack(tr.id !== undefined ? tr.id : i);
+            }
+          }
+          audioTracksList.querySelectorAll('.track-item-row').forEach((r) => r.classList.remove('selected'));
+          item.classList.add('selected');
           showToast(`Audio: ${name}`);
           triggerHaptic('select');
         });
@@ -850,12 +1167,13 @@
       });
     }
 
-    // Subtitles list
+    // Render Subtitle Tracks
     subTracksList.innerHTML = '';
 
-    // "Off" option
+    // "Off" Option
+    const isOffSelected = (currentSubId === null || currentSubId === -1 || currentSubId === undefined);
     const offItem = document.createElement('div');
-    offItem.className = `track-item-row ${activeSubIndex === -1 ? 'selected' : ''}`;
+    offItem.className = `track-item-row ${isOffSelected ? 'selected' : ''}`;
     offItem.innerHTML = `
       <div class="track-item-left">
         <span class="track-item-name">Off</span>
@@ -864,16 +1182,29 @@
       <span class="track-check-indicator">✓</span>
     `;
     offItem.addEventListener('click', () => {
-      selectSubtitleTrack(-1, null);
+      if (moviPlayer) {
+        if (typeof moviPlayer.pickSubtitleTrack === 'function') {
+          moviPlayer.pickSubtitleTrack(-1);
+        } else if (typeof inner?.selectSubtitleTrack === 'function') {
+          inner.selectSubtitleTrack(-1);
+        }
+      }
+      if (assRenderer) {
+        moviPlayer.setSubtitleRenderer(null);
+      }
+      subTracksList.querySelectorAll('.track-item-row').forEach((r) => r.classList.remove('selected'));
+      offItem.classList.add('selected');
+      showToast('Subtitles: Off');
+      triggerHaptic('select');
     });
     subTracksList.appendChild(offItem);
 
     subTracks.forEach((sub, i) => {
+      const isSelected = (!isOffSelected && sub.id === currentSubId);
       const item = document.createElement('div');
-      item.className = `track-item-row ${sub.index === activeSubIndex ? 'selected' : ''}`;
-      item.dataset.subIndex = sub.index;
-      const name = sub.language_name || sub.title || `Subtitle ${i + 1}`;
-      const desc = `${sub.codec?.toUpperCase() || 'WebVTT'} • ${sub.forced ? 'Forced' : 'Full'}`;
+      item.className = `track-item-row ${isSelected ? 'selected' : ''}`;
+      const name = sub.label || sub.title || sub.language || `Subtitle ${i + 1}`;
+      const desc = `${(sub.codec || 'ASS').toUpperCase()} • ${sub.isDefault ? 'Default' : 'Embedded'}`;
 
       item.innerHTML = `
         <div class="track-item-left">
@@ -884,97 +1215,38 @@
       `;
 
       item.addEventListener('click', () => {
-        selectSubtitleTrack(sub.index, sub);
+        if (moviPlayer) {
+          if (typeof moviPlayer.pickSubtitleTrack === 'function') {
+            moviPlayer.pickSubtitleTrack(sub.id !== undefined ? sub.id : i);
+          } else if (typeof inner?.selectSubtitleTrack === 'function') {
+            inner.selectSubtitleTrack(sub.id !== undefined ? sub.id : i);
+          }
+          syncSubtitleRenderer();
+        }
+        subTracksList.querySelectorAll('.track-item-row').forEach((r) => r.classList.remove('selected'));
+        item.classList.add('selected');
+        showToast(`Subtitles: ${name}`);
+        triggerHaptic('select');
       });
 
       subTracksList.appendChild(item);
     });
-  }
 
-  function selectSubtitleTrack(index, subObj) {
-    activeSubIndex = index;
-
-    // 1. Correctly update selected class on all rows (Off item included!)
-    const allRows = subTracksList.querySelectorAll('.track-item-row');
-    allRows.forEach((row, i) => {
-      if (i === 0) {
-        // Off button: selected ONLY when index === -1
-        row.classList.toggle('selected', index === -1);
-      } else {
-        const rowIdx = parseInt(row.dataset.subIndex, 10);
-        row.classList.toggle('selected', rowIdx === index);
-      }
-    });
-
-    // 2. Remove existing track elements
-    mainVideo.querySelectorAll('track').forEach((t) => t.remove());
-
-    if (mainVideo.textTracks && mainVideo.textTracks.length > 0) {
-      for (let j = 0; j < mainVideo.textTracks.length; j++) {
-        mainVideo.textTracks[j].mode = 'disabled';
-      }
-    }
-
-    if (index === -1 || !subObj) {
-      showToast('Subtitles: Off');
-      triggerHaptic('select');
-      return;
-    }
-
-    // 3. Attach WebVTT track
-    const trackEl = document.createElement('track');
-    trackEl.kind = 'subtitles';
-    trackEl.label = subObj.language_name || subObj.title || 'Subtitles';
-    trackEl.srclang = subObj.language || 'en';
-    trackEl.src = `/api/media/${currentActiveFile.display_id || currentActiveFile.id}/subs/${index}.vtt`;
-    trackEl.default = true;
-
-    function activateTrackShowing() {
-      try {
-        if (trackEl.track) {
-          trackEl.track.mode = 'showing';
-        }
-        if (mainVideo.textTracks && mainVideo.textTracks.length > 0) {
-          for (let j = 0; j < mainVideo.textTracks.length; j++) {
-            const tt = mainVideo.textTracks[j];
-            if (tt.label === trackEl.label || tt.language === trackEl.srclang) {
-              tt.mode = 'showing';
-            } else {
-              tt.mode = 'disabled';
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('[Subtitles] Mode note:', e);
-      }
-    }
-
-    trackEl.addEventListener('load', activateTrackShowing);
-    mainVideo.appendChild(trackEl);
-    activateTrackShowing();
-
-    showToast(`Subtitles: ${subObj.language_name || subObj.title || 'Enabled'}`);
-    triggerHaptic('select');
+    openTrackSheet();
   }
 
   // Open / Close Track Sheet
   function openTrackSheet() {
     trackModalBackdrop.classList.add('active');
     trackSheetContainer.classList.add('active');
-    playerControlsOverlay.classList.remove('autohide');
     triggerHaptic('light');
   }
 
   function closeTrackSheet() {
     trackModalBackdrop.classList.remove('active');
     trackSheetContainer.classList.remove('active');
-    resetControlsAutohide();
   }
 
-  btnTracks.addEventListener('click', (e) => {
-    e.stopPropagation();
-    openTrackSheet();
-  });
   btnCloseTrackSheet.addEventListener('click', closeTrackSheet);
   trackModalBackdrop.addEventListener('click', closeTrackSheet);
 

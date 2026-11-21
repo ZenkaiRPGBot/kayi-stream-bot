@@ -20,6 +20,10 @@
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
+  <!-- Movi Player WASM Engine & JASSUB Subtitle Renderer -->
+  <script type="module" src="https://cdn.jsdelivr.net/npm/movi-player/dist/element.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jassub/dist/jassub.umd.js"></script>
+
   <!-- Application Stylesheet -->
   <link rel="stylesheet" href="/static/app.css">
 </head>
@@ -118,15 +122,22 @@
           <!-- Cinema Player Canvas Surface -->
           <div class="player-canvas-container" id="playerCanvas">
 
-            <!-- HTML5 Video Element -->
-            <video class="player-video-element" id="mainVideo" playsinline preload="metadata" crossorigin="anonymous"></video>
+            <!-- Universal Movi WASM + WebCodecs Player -->
+            <movi-player
+              id="moviPlayer"
+              class="player-video-element"
+              controls
+              autoplay
+              ambient
+              stablevolume
+              resume
+              fastseek="all"
+              doubletap
+              subtitlelang="eng"
+            ></movi-player>
 
-            <!-- Centered Big Play Button -->
-            <button class="player-center-play" id="playerCenterPlay" aria-label="Play Video">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            </button>
+            <!-- Native HTML5 Video Fallback -->
+            <video class="player-video-element" id="nativeFallback" playsinline preload="metadata" crossorigin="anonymous" style="display: none;"></video>
 
             <!-- Loading Spinner -->
             <div class="player-loading-spinner" id="playerLoadingSpinner">
@@ -142,104 +153,29 @@
               <p class="player-error-desc">MKV or multi-audio files can be played instantly in VLC, MX Player, or downloaded directly.</p>
             </div>
 
-            <!-- Tap-to-Reveal Controls Overlay -->
-            <div class="player-controls-overlay" id="playerControlsOverlay">
-
-              <!-- Scrub Timeline -->
-              <div class="timeline-track-container" id="timelineContainer" role="slider" aria-label="Video timeline">
-                <div class="timeline-track-rail">
-                  <div class="timeline-track-buffer" id="timelineBuffer"></div>
-                  <div class="timeline-track-fill" id="timelineFill"></div>
-                </div>
-              </div>
-
-              <!-- Bottom Controls Row -->
-              <div class="controls-bottom-bar">
-
-                <div class="controls-group-left">
-                  <button class="ctrl-btn" id="btnPlay" aria-label="Play / Pause">
-                    <svg id="iconPlay" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                    <svg id="iconPause" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
-                      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                    </svg>
-                  </button>
-
-                  <button class="ctrl-btn" id="btnRewind" aria-label="Rewind 10 seconds">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
-                    </svg>
-                  </button>
-
-                  <button class="ctrl-btn" id="btnForward" aria-label="Forward 10 seconds">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/>
-                    </svg>
-                  </button>
-
-                  <button class="ctrl-btn" id="btnMute" aria-label="Mute / Unmute">
-                    <svg id="iconVol" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-                    </svg>
-                    <svg id="iconMute" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;">
-                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" x2="1" y1="1" y2="23"/>
-                    </svg>
-                  </button>
-
-                  <span class="time-display-label" id="timeDisplayLabel">0:00 / 0:00</span>
-                </div>
-
-                <div class="controls-group-right">
-                  <!-- Speed Selector -->
-                  <button class="ctrl-btn" id="btnSpeed" aria-label="Playback Speed" title="Playback Speed">
-                    <span id="speedLabel" style="font-size: 11px; font-weight: 700;">1.0x</span>
-                  </button>
-
-                  <!-- Prominent Audio & Subtitles Button -->
-                  <button class="btn-tracks-switcher" id="btnTracks" aria-label="Audio & Subtitles">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                    </svg>
-                    <span>Audio & Subs</span>
-                    <span class="tracks-badge-dot" id="tracksBadgeDot"></span>
-                  </button>
-
-                  <!-- PiP -->
-                  <button class="ctrl-btn" id="btnPip" aria-label="Picture in Picture">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect width="18" height="14" x="3" y="5" rx="2"/><rect width="8" height="6" x="11" y="11" rx="1"/>
-                    </svg>
-                  </button>
-
-                  <!-- Fullscreen -->
-                  <button class="ctrl-btn" id="btnFullscreen" aria-label="Fullscreen">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-                    </svg>
-                  </button>
-                </div>
-
-              </div>
-
-            </div>
-
           </div>
 
           <!-- Action Buttons Below Player -->
           <div class="player-actions-row">
-            <a class="player-btn-main primary" id="btnDownloadMain" href="#" download>
+            <button class="player-btn-main primary" id="btnDownloadMain">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>
               </svg>
               <span>Download File</span>
-            </a>
+            </button>
 
             <button class="player-btn-main secondary" id="btnCopyLinkMain">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
               </svg>
               <span>Copy Link</span>
+            </button>
+
+            <button class="player-btn-main secondary" id="btnTracksBottom">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span>Audio & Subs</span>
             </button>
 
             <button class="player-btn-main secondary" id="btnExternalPlayer">

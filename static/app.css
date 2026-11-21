@@ -682,6 +682,27 @@ a {
   background-color: #000000;
 }
 
+/* Universal Movi Player WASM Element */
+movi-player {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #000;
+  outline: none;
+  --movi-sub-edge: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0 0 3px rgba(0, 0, 0, 0.95), 0 2px 4px rgba(0, 0, 0, 0.85);
+}
+
+movi-player::part(subtitle),
+::part(subtitle) {
+  text-shadow:
+    -1.5px -1.5px 0 #000,
+     1.5px -1.5px 0 #000,
+    -1.5px  1.5px 0 #000,
+     1.5px  1.5px 0 #000,
+     0 0 3px rgba(0, 0, 0, 0.95),
+     0 2px 4px rgba(0, 0, 0, 0.85) !important;
+}
+
 /* Subtitle Styling on native video element */
 video::cue {
   background-color: rgba(8, 9, 11, 0.9) !important;
