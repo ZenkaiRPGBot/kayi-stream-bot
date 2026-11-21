@@ -793,13 +793,32 @@
   // ==============================================================================
 
   function openExternalVlc(streamUrl) {
-    const clean = streamUrl.replace('https://', '').replace('http://', '');
-    const vlcScheme = `vlc://${clean}`;
-    window.location.href = vlcScheme;
-    setTimeout(() => {
-      copyToClipboard(streamUrl);
-      showToast('Opening VLC (Link copied as fallback)');
-    }, 600);
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (isAndroid) {
+      // Direct Android Intent launches VLC Player
+      const androidIntent = `intent:${streamUrl}#Intent;package=org.videolan.vlc;type=video/*;end`;
+      window.location.href = androidIntent;
+    } else if (isIOS) {
+      // iOS VLC custom scheme
+      const vlcScheme = `vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(streamUrl)}`;
+      window.location.href = vlcScheme;
+    } else {
+      // Desktop / General
+      const clean = streamUrl.replace('https://', '').replace('http://', '');
+      window.location.href = `vlc://${clean}`;
+    }
+
+    copyToClipboard(streamUrl);
+    showToast('Opening VLC Player (Link copied to clipboard)');
+  }
+
+  function openExternalMxPlayer(streamUrl) {
+    const androidIntent = `intent:${streamUrl}#Intent;package=com.mxtech.videoplayer.ad;type=video/*;end`;
+    window.location.href = androidIntent;
+    copyToClipboard(streamUrl);
+    showToast('Opening MX Player (Link copied to clipboard)');
   }
 
   function openExternalPlayerModal(file) {
