@@ -5,7 +5,7 @@ import secrets
 import html
 import subprocess
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 import aiohttp
 import psutil
 from aiogram import Bot, Dispatcher, types, F
@@ -78,7 +78,7 @@ async def measure_gateway_latency(bot: Bot) -> float:
 # UI CARD BUILDERS
 # ==============================================================================
 
-def build_file_card_text(file_id: int, file_name: str, file_size: int, mime_type: str, watch_url: str, dl_url: str, is_cached: bool = False) -> str:
+def build_file_card_text(file_name: str, file_size: int, mime_type: str, watch_url: str, dl_url: str, is_cached: bool = False) -> str:
     category = get_media_category(mime_type, file_name)
     icon_map = {
         "video": "🎬 Video",
@@ -91,6 +91,7 @@ def build_file_card_text(file_id: int, file_name: str, file_size: int, mime_type
     size_str = format_file_size(file_size)
     tag = " ⚡" if is_cached else ""
 
+    # Clean single card WITHOUT showing technical ID to normal users
     return (
         f"<b>Stream Link Generated ✅{tag}</b>\n\n"
         f"• <b>File:</b> <code>{html.escape(file_name)}</code>\n"
@@ -104,7 +105,7 @@ def build_file_card_text(file_id: int, file_name: str, file_size: int, mime_type
         "<i>Tap buttons below to stream, download, or copy:</i>"
     )
 
-def build_file_markup(watch_url: str, dl_url: str, file_db_id: int) -> InlineKeyboardMarkup:
+def build_file_markup(watch_url: str, dl_url: str, display_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="Watch Online 🍿", url=watch_url, style="primary"),
@@ -115,12 +116,16 @@ def build_file_markup(watch_url: str, dl_url: str, file_db_id: int) -> InlineKey
             InlineKeyboardButton(text="Copy Download 📋", copy_text=CopyTextButton(text=dl_url))
         ],
         [
-            InlineKeyboardButton(text="File Details ℹ️", callback_data=f"info_file_{file_db_id}"),
-            InlineKeyboardButton(text="Delete Link 🗑️", callback_data=f"del:ask:{file_db_id}", style="danger")
+            InlineKeyboardButton(text="File Details ℹ️", callback_data=f"info_file_{display_id}"),
+            InlineKeyboardButton(text="Delete Link 🗑️", callback_data=f"del:ask:{display_id}", style="danger")
         ]
     ])
 
-async def build_usage_card_text(bot: Bot) -> tuple[str, InlineKeyboardMarkup]:
+# ==============================================================================
+# BUTTONED STATS / USAGE BUILDER (Logical Tabs, No Channel Link)
+# ==============================================================================
+
+async def build_stats_view(bot: Bot, tab: str = "overview") -> tuple[str, InlineKeyboardMarkup]:
     stats = await db.get_global_stats()
     sys_metrics = get_system_load()
     uptime_str = get_uptime_string()
@@ -129,30 +134,104 @@ async def build_usage_card_text(bot: Bot) -> tuple[str, InlineKeyboardMarkup]:
     total_bandwidth = format_file_size(stats["total_bytes"])
     active_storage = format_file_size(stats["active_bytes"])
 
-    text = (
-        f"<b>{BRAND_NAME} — Server Metrics 📊</b>\n\n"
-        "<b>Streaming Engine Status:</b>\n"
-        f"• <b>Health:</b> <code>Healthy & Active</code> 🟢\n"
-        f"• <b>Engine:</b> <code>Pyrogram MTProto + Range Server</code>\n"
-        f"• <b>Gateway Latency:</b> <code>{latency_ms:.1f} ms</code>\n"
-        f"• <b>Uptime:</b> <code>{uptime_str}</code>\n\n"
-        "<b>Storage & Activity:</b>\n"
-        f"• <b>Total Files Registered:</b> <code>{stats['total_files']}</code>\n"
-        f"• <b>Active Streaming Links:</b> <code>{stats['active_links']}</code>\n"
-        f"• <b>Active Storage Size:</b> <code>{active_storage}</code>\n"
-        f"• <b>Total Downloads / Streams:</b> <code>{stats['total_downloads']}</code>\n"
-        f"• <b>Bandwidth Transferred:</b> <code>{total_bandwidth}</code>\n\n"
-        "<b>Hardware Resources:</b>\n"
-        f"• <b>RAM Usage:</b> <code>{sys_metrics['proc_mem_mb']:.1f} MB</code>\n"
-        f"• <b>CPU Usage:</b> <code>{sys_metrics['cpu_pct']:.1f}%</code>\n\n"
-        f"🕒 <i>Updated: {now_ist_str}</i>"
+    if tab == "system":
+        text = (
+            f"<b>{BRAND_NAME} — Server & Hardware Load ⚙️</b>\n\n"
+            "<b>Hardware Metrics:</b>\n"
+            f"• <b>RAM Consumption:</b> <code>{sys_metrics['proc_mem_mb']:.1f} MB</code>\n"
+            f"• <b>CPU Utilization:</b> <code>{sys_metrics['cpu_pct']:.1f}%</code>\n"
+            f"• <b>Status:</b> <code>{sys_metrics['status']}</code>\n\n"
+            "<b>Engine & Network:</b>\n"
+            f"• <b>Gateway Latency:</b> <code>{latency_ms:.1f} ms</code>\n"
+            f"• <b>MTProto Streaming:</b> <code>Active & Healthy</code> 🟢\n"
+            f"• <b>System Uptime:</b> <code>{uptime_str}</code>\n\n"
+            f"🕒 <i>Updated: {now_ist_str}</i>"
+        )
+    else:
+        text = (
+            f"<b>{BRAND_NAME} — Service Overview 📊</b>\n\n"
+            "<b>Storage & Link Counts:</b>\n"
+            f"• <b>Active Streaming Links:</b> <code>{stats['active_links']}</code>\n"
+            f"• <b>Active Storage Footprint:</b> <code>{active_storage}</code>\n"
+            f"• <b>Total Files Registered:</b> <code>{stats['total_files']}</code>\n\n"
+            "<b>Transfer Statistics:</b>\n"
+            f"• <b>Total Stream Downloads:</b> <code>{stats['total_downloads']}</code>\n"
+            f"• <b>Total Bandwidth Served:</b> <code>{total_bandwidth}</code>\n\n"
+            f"• <b>Uptime:</b> <code>{uptime_str}</code> · <b>Latency:</b> <code>{latency_ms:.1f} ms</code>\n"
+            f"🕒 <i>Updated: {now_ist_str}</i>"
+        )
+
+    # Clean tab buttons: active tab marked, inactive tab switchable
+    tab_overview_btn = InlineKeyboardButton(
+        text="• Overview 📊 •" if tab == "overview" else "Overview 📊",
+        callback_data="stats:tab:overview"
+    )
+    tab_system_btn = InlineKeyboardButton(
+        text="• Server Load ⚙️ •" if tab == "system" else "Server Load ⚙️",
+        callback_data="stats:tab:system"
     )
 
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="Refresh 🔄", callback_data="usage:refresh", style="primary"),
-            InlineKeyboardButton(text="Channel 👑", url=COMMUNITY_URL, style="success")
-        ]
+        [tab_overview_btn, tab_system_btn],
+        [InlineKeyboardButton(text="Refresh Metrics 🔄", callback_data=f"stats:refresh:{tab}", style="primary")]
+    ])
+    return text, markup
+
+# ==============================================================================
+# BUTTONED HELP GUIDE BUILDER (Pure Guide, No Command Shortcuts)
+# ==============================================================================
+
+def build_help_view(tab: str = "mobile") -> tuple[str, InlineKeyboardMarkup]:
+    if tab == "desktop":
+        text = (
+            f"<b>{BRAND_NAME} — PC, Mac & Smart TV Guide 💻</b>\n\n"
+            "<b>PC / Mac (VLC Media Player):</b>\n"
+            "1. Copy your Direct Stream link from the bot.\n"
+            "2. In VLC: Click <b>Media ➔ Open Network Stream</b> (or <code>Ctrl + N</code>).\n"
+            "3. Paste the URL and press Play. Instant seek and full audio/sub selection!\n\n"
+            "<b>PotPlayer (Windows):</b>\n"
+            "• Press <code>Ctrl + U</code>, paste the stream link, and enjoy seamless playback.\n\n"
+            "<b>Smart TV & Kodi:</b>\n"
+            "• Open the VLC app on Android TV or enter the stream URL into Kodi Network Stream."
+        )
+    elif tab == "web":
+        text = (
+            f"<b>{BRAND_NAME} — Web Streaming & Downloads 🌐</b>\n\n"
+            "<b>Web Player Features:</b>\n"
+            "• Tap <b>Watch Online 🍿</b> to open our custom browser player.\n"
+            "• Native HTML5 streaming with instant seek and zero buffering.\n"
+            "• Works on Chrome, Safari, Edge, Firefox, and mobile browsers.\n\n"
+            "<b>High-Speed Direct Downloads:</b>\n"
+            "• Tap <b>Fast Download ⚡</b> or copy the Direct Download URL.\n"
+            "• Supports download managers (IDM, 1DM, ADM) with multi-threaded chunk acceleration."
+        )
+    else:  # mobile
+        text = (
+            f"<b>{BRAND_NAME} — Mobile Setup Guide 📱</b>\n\n"
+            "<b>Android Devices:</b>\n"
+            "• Recommended Apps: <b>MX Player</b> or <b>VLC for Android</b>.\n"
+            "• In MX Player/VLC: Open <b>Network Stream</b> and paste the link.\n"
+            "• Supports multiple audio tracks (Dual Audio/Multi) and embedded subtitles (SRT/ASS).\n\n"
+            "<b>iPhone / iPad (iOS):</b>\n"
+            "• Watch directly in <b>Safari</b> with native picture-in-picture.\n"
+            "• For MKV videos with multiple subtitle tracks, use <b>VLC for Mobile</b> or <b>Outplayer</b>."
+        )
+
+    tab_mobile = InlineKeyboardButton(
+        text="• 📱 Mobile •" if tab == "mobile" else "📱 Mobile",
+        callback_data="help:tab:mobile"
+    )
+    tab_desktop = InlineKeyboardButton(
+        text="• 💻 PC / TV •" if tab == "desktop" else "💻 PC / TV",
+        callback_data="help:tab:desktop"
+    )
+    tab_web = InlineKeyboardButton(
+        text="• 🌐 Web Player •" if tab == "web" else "🌐 Web Player",
+        callback_data="help:tab:web"
+    )
+
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [tab_mobile, tab_desktop, tab_web]
     ])
     return text, markup
 
@@ -161,19 +240,21 @@ async def build_usage_card_text(bot: Bot) -> tuple[str, InlineKeyboardMarkup]:
 # ==============================================================================
 
 async def setup_bot_commands(bot: Bot):
+    # Default commands for regular users
     default_commands = [
         BotCommand(command="start", description="Start bot & overview"),
-        BotCommand(command="myfiles", description="View your active uploads"),
-        BotCommand(command="files", description="Browse public catalog"),
-        BotCommand(command="ping", description="Check latency & uptime"),
-        BotCommand(command="help", description="How to stream in VLC / browser"),
+        BotCommand(command="myfiles", description="View your active stream links"),
+        BotCommand(command="ping", description="Check server latency & uptime"),
+        BotCommand(command="help", description="Player & streaming setup guide"),
     ]
     await bot.set_my_commands(default_commands, scope=BotCommandScopeDefault())
 
+    # Owner commands: Admin tools strictly at the bottom with [Admin] tags
     owner_commands = default_commands + [
-        BotCommand(command="stats", description="Bot statistics & metrics"),
-        BotCommand(command="usage", description="System RAM/CPU load"),
-        BotCommand(command="restart", description="Safe restart process")
+        BotCommand(command="files", description="[Admin] Browse all system files"),
+        BotCommand(command="stats", description="[Admin] Service metrics & storage"),
+        BotCommand(command="usage", description="[Admin] Live RAM & CPU hardware load"),
+        BotCommand(command="restart", description="[Admin] Safe restart streaming service")
     ]
     try:
         await bot.set_my_commands(owner_commands, scope=BotCommandScopeChat(chat_id=OWNER_ID))
@@ -236,13 +317,11 @@ async def cmd_start(message: types.Message):
         "👉 <b>Send or forward any file below to generate your link!</b>"
     )
 
+    # Clean buttons for users (no catalog button for regular users)
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="My Files 📂", callback_data="user:myfiles", style="primary"),
-            InlineKeyboardButton(text="Catalog 🌐", callback_data="show_files_1")
-        ],
-        [
-            InlineKeyboardButton(text="Channel 👑", url=COMMUNITY_URL, style="success")
+            InlineKeyboardButton(text="Help & Player Guide 📖", callback_data="help:tab:mobile")
         ]
     ])
 
@@ -250,30 +329,7 @@ async def cmd_start(message: types.Message):
 
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
-    text = (
-        f"<b>{BRAND_NAME} — Streaming Guide</b> 📖\n\n"
-        "<b>How to use:</b>\n"
-        "1. Send or forward any video, audio, or document to the bot.\n"
-        "2. The bot instantly provides <b>Stream</b> and <b>Download</b> links.\n"
-        "3. Tap <b>Watch Online 🍿</b> to open the browser player, or launch in external hardware players.\n\n"
-        "<b>Recommended Players:</b>\n"
-        "• <b>Android:</b> MX Player, VLC for Android\n"
-        "• <b>PC / Mac:</b> VLC Media Player, PotPlayer\n"
-        "• <b>iOS:</b> Safari, VLC for Mobile, Outplayer\n"
-        "• <b>Smart TV:</b> Kodi, VLC on Android TV\n\n"
-        "<b>Commands:</b>\n"
-        "• <code>/myfiles</code> — View and manage your uploads\n"
-        "• <code>/files</code> — Browse public active files\n"
-        "• <code>/info &lt;ID&gt;</code> — Detailed file metadata\n"
-        "• <code>/ping</code> — Server latency & uptime"
-    )
-
-    markup = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="Browse Catalog 🌐", callback_data="show_files_1", style="primary"),
-            InlineKeyboardButton(text="My Files 📂", callback_data="user:myfiles")
-        ]
-    ])
+    text, markup = build_help_view(tab="mobile")
     await message.reply(text, parse_mode=ParseMode.HTML, reply_markup=markup)
 
 @dp.message(Command("myfiles"))
@@ -294,16 +350,17 @@ async def cmd_myfiles(message: types.Message):
     keyboard_rows = []
 
     for idx, f in enumerate(files, 1):
-        f_id = f["id"]
+        disp_id = f.get("display_id") or str(f["id"])
         name = f["file_name"]
         size_str = format_file_size(f["file_size"])
-        watch_url = f"{srv_url}/watch/{f_id}"
-        dl_url = f"{srv_url}/dl/{f_id}"
+        category = get_media_category(f["mime_type"], name)
+        type_icon = "🎬" if category == "video" else ("🎵" if category == "audio" else ("📄" if category == "pdf" else "📁"))
+        watch_url = f"{srv_url}/watch/{disp_id}"
 
-        lines.append(f"<b>{idx}. ID {f_id}</b> · <code>{html.escape(name)}</code> ({size_str})")
+        lines.append(f"<b>{idx}. {html.escape(name)}</b>\n• <b>Size:</b> <code>{size_str}</code> | {type_icon} <code>{category.title()}</code>")
         keyboard_rows.append([
-            InlineKeyboardButton(text=f"Watch #{f_id} 🍿", url=watch_url, style="primary"),
-            InlineKeyboardButton(text=f"Delete 🗑️", callback_data=f"del:ask:{f_id}", style="danger")
+            InlineKeyboardButton(text=f"Watch #{idx} 🍿", url=watch_url, style="primary"),
+            InlineKeyboardButton(text=f"Delete #{idx} 🗑️", callback_data=f"del:ask:{disp_id}", style="danger")
         ])
 
     keyboard_rows.append([
@@ -311,7 +368,7 @@ async def cmd_myfiles(message: types.Message):
     ])
 
     await message.reply(
-        "\n".join(lines),
+        "\n\n".join(lines),
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard_rows),
         link_preview_options=types.LinkPreviewOptions(is_disabled=True)
@@ -319,6 +376,11 @@ async def cmd_myfiles(message: types.Message):
 
 @dp.message(Command("files"))
 async def cmd_files(message: types.Message):
+    # Restricted strictly to owner
+    if message.from_user.id != OWNER_ID:
+        await message.reply("Access restricted to bot owner.")
+        return
+
     page = 1
     parts = message.text.split()
     if len(parts) > 1 and parts[1].isdigit():
@@ -333,20 +395,20 @@ async def build_files_catalog(page: int = 1) -> tuple[str, InlineKeyboardMarkup]
     total_pages = max(1, (total + page_size - 1) // page_size)
     page = min(page, total_pages)
 
-    lines = [f"<b>Public Stream Catalog 🌐</b>\n<i>{total} active files · Page {page} of {total_pages}</i>\n"]
+    lines = [f"<b>System File Catalog [Admin] 🌐</b>\n<i>{total} active files · Page {page} of {total_pages}</i>\n"]
     srv_url = get_server_url()
 
     if not files:
-        lines.append("<i>No active files found. Send a file to register ID 1!</i>")
+        lines.append("<i>No active files found.</i>")
     else:
         for f in files:
-            f_id = f["id"]
+            disp_id = f.get("display_id") or str(f["id"])
             name = f["file_name"]
             size_fmt = format_file_size(f["file_size"])
             ext = os.path.splitext(name)[1].lower().lstrip(".")
             fmt_label = ext.upper() if ext else "FILE"
-            watch_url = f"{srv_url}/watch/{f_id}"
-            lines.append(f"• <b>ID {f_id}</b> [{fmt_label} · {size_fmt}]\n  <a href=\"{watch_url}\">{html.escape(name)}</a>")
+            watch_url = f"{srv_url}/watch/{disp_id}"
+            lines.append(f"• <b>Ref {disp_id}</b> [{fmt_label} · {size_fmt}]\n  <a href=\"{watch_url}\">{html.escape(name)}</a>")
 
     nav_row = []
     if page > 1:
@@ -363,8 +425,7 @@ async def cmd_info(message: types.Message):
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
         await message.reply(
-            "<b>Usage:</b> <code>/info &lt;ID&gt;</code>\n\n"
-            "<i>Example: <code>/info 1</code></i>",
+            "<b>Usage:</b> <code>/info &lt;ID&gt;</code>",
             parse_mode=ParseMode.HTML
         )
         return
@@ -375,35 +436,50 @@ async def cmd_info(message: types.Message):
 async def send_file_info_card(message: types.Message, query_id: str):
     record = await db.get_file_by_id_or_token(query_id)
     if not record:
-        await message.reply(f"❌ <i>No active file found with ID {html.escape(query_id)}.</i>", parse_mode=ParseMode.HTML)
+        await message.reply(f"❌ <i>No active file found.</i>", parse_mode=ParseMode.HTML)
         return
 
-    f_id = record["id"]
+    disp_id = record.get("display_id") or str(record["id"])
     file_name = record["file_name"]
     file_size = record["file_size"]
     mime_type = record["mime_type"]
     uploaded_str = format_date_str(record["created_at"])
-    dls = record["download_count"]
 
     srv_url = get_server_url()
-    dl_url = f"{srv_url}/dl/{f_id}"
-    watch_url = f"{srv_url}/watch/{f_id}"
+    dl_url = f"{srv_url}/dl/{disp_id}"
+    watch_url = f"{srv_url}/watch/{disp_id}"
 
-    card_text = (
-        f"<b>File Information ℹ️</b>\n\n"
-        f"• <b>ID:</b> <code>{f_id}</code>\n"
-        f"• <b>Name:</b> <code>{html.escape(file_name)}</code>\n"
-        f"• <b>Size:</b> <code>{format_file_size(file_size)}</code>\n"
-        f"• <b>Total Plays/Downloads:</b> <code>{dls}</code>\n"
-        f"• <b>Uploaded:</b> <code>{uploaded_str}</code>\n\n"
-        f"<b>Stream URL 👇</b>\n"
-        f"<code>{watch_url}</code>\n\n"
-        f"<b>Download URL 👇</b>\n"
-        f"<code>{dl_url}</code>"
-    )
+    category = get_media_category(mime_type, file_name)
+    is_owner = (message.from_user.id == OWNER_ID)
 
-    markup = build_file_markup(watch_url, dl_url, f_id)
-    await message.reply(card_text, parse_mode=ParseMode.HTML, reply_markup=markup, link_preview_options=types.LinkPreviewOptions(is_disabled=True))
+    # Clean file details: No total plays/downloads, no ID for normal users
+    card_lines = [
+        "<b>File Information ℹ️</b>\n",
+        f"• <b>Name:</b> <code>{html.escape(file_name)}</code>",
+        f"• <b>Size:</b> <code>{format_file_size(file_size)}</code>",
+        f"• <b>Format:</b> <code>{category.title()}</code>",
+        f"• <b>MIME:</b> <code>{html.escape(mime_type)}</code>",
+        f"• <b>Uploaded:</b> <code>{uploaded_str}</code>"
+    ]
+    if is_owner:
+        card_lines.append(f"• <b>Ref ID:</b> <code>{disp_id}</code>")
+
+    card_lines.extend([
+        f"\n<b>Stream URL 👇</b>\n<code>{watch_url}</code>",
+        f"\n<b>Download URL 👇</b>\n<code>{dl_url}</code>"
+    ])
+
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Watch Online 🍿", url=watch_url, style="primary"),
+            InlineKeyboardButton(text="Fast Download ⚡", url=dl_url, style="success")
+        ],
+        [
+            InlineKeyboardButton(text="Copy Stream 📋", copy_text=CopyTextButton(text=watch_url)),
+            InlineKeyboardButton(text="Delete Link 🗑️", callback_data=f"del:ask:{disp_id}", style="danger")
+        ]
+    ])
+    await message.reply("\n".join(card_lines), parse_mode=ParseMode.HTML, reply_markup=markup, link_preview_options=types.LinkPreviewOptions(is_disabled=True))
 
 @dp.message(Command("ping"))
 async def cmd_ping(message: types.Message, bot: Bot):
@@ -427,7 +503,7 @@ async def cmd_stats(message: types.Message, bot: Bot):
         await message.reply("Access restricted to bot owner.")
         return
 
-    text, markup = await build_usage_card_text(bot)
+    text, markup = await build_stats_view(bot, tab="overview")
     await message.reply(text, parse_mode=ParseMode.HTML, reply_markup=markup)
 
 @dp.message(Command("restart"))
@@ -445,8 +521,47 @@ async def cmd_restart(message: types.Message, bot: Bot):
 # CALLBACK QUERY HANDLERS
 # ==============================================================================
 
+@dp.callback_query(F.data.startswith("stats:tab:"))
+async def cb_stats_tab(query: types.CallbackQuery, bot: Bot):
+    if query.from_user.id != OWNER_ID:
+        await query.answer("Access restricted to bot owner.", show_alert=True)
+        return
+    tab = query.data.split(":")[2]
+    text, markup = await build_stats_view(bot, tab=tab)
+    try:
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+    except TelegramBadRequest:
+        pass
+    await query.answer()
+
+@dp.callback_query(F.data.startswith("stats:refresh:"))
+async def cb_stats_refresh(query: types.CallbackQuery, bot: Bot):
+    if query.from_user.id != OWNER_ID:
+        await query.answer("Access restricted to bot owner.", show_alert=True)
+        return
+    tab = query.data.split(":")[2]
+    text, markup = await build_stats_view(bot, tab=tab)
+    try:
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+    except TelegramBadRequest:
+        pass
+    await query.answer("Metrics refreshed.")
+
+@dp.callback_query(F.data.startswith("help:tab:"))
+async def cb_help_tab(query: types.CallbackQuery):
+    tab = query.data.split(":")[2]
+    text, markup = build_help_view(tab=tab)
+    try:
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+    except TelegramBadRequest:
+        pass
+    await query.answer()
+
 @dp.callback_query(F.data.startswith("show_files_"))
 async def callback_show_files(query: types.CallbackQuery):
+    if query.from_user.id != OWNER_ID:
+        await query.answer("Access restricted to bot owner.", show_alert=True)
+        return
     page = int(query.data.split("_")[2])
     text, markup = await build_files_catalog(page=page)
     try:
@@ -462,14 +577,14 @@ async def callback_user_myfiles(query: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("info_file_"))
 async def callback_info_file(query: types.CallbackQuery):
-    file_id = query.data.split("_")[2]
+    disp_id = query.data.split("_")[2]
     await query.answer()
-    await send_file_info_card(query.message, file_id)
+    await send_file_info_card(query.message, disp_id)
 
 @dp.callback_query(F.data.startswith("del:ask:"))
 async def cb_delete_ask(callback: types.CallbackQuery):
-    f_id = int(callback.data.split(":")[2])
-    record = await db.get_file_by_id_or_token(f_id)
+    disp_id = callback.data.split(":")[2]
+    record = await db.get_file_by_id_or_token(disp_id)
     if not record:
         await callback.answer("File record not found or already deleted.", show_alert=True)
         return
@@ -481,8 +596,8 @@ async def cb_delete_ask(callback: types.CallbackQuery):
 
     confirm_markup = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="⚠️ Confirm Delete 🗑️", callback_data=f"del:confirm:{f_id}", style="danger"),
-            InlineKeyboardButton(text="Cancel ↩️", callback_data=f"del:cancel:{f_id}")
+            InlineKeyboardButton(text="⚠️ Confirm Delete 🗑️", callback_data=f"del:confirm:{disp_id}", style="danger"),
+            InlineKeyboardButton(text="Cancel ↩️", callback_data=f"del:cancel:{disp_id}")
         ]
     ])
 
@@ -494,16 +609,16 @@ async def cb_delete_ask(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("del:cancel:"))
 async def cb_delete_cancel(callback: types.CallbackQuery):
-    f_id = int(callback.data.split(":")[2])
-    record = await db.get_file_by_id_or_token(f_id)
+    disp_id = callback.data.split(":")[2]
+    record = await db.get_file_by_id_or_token(disp_id)
     if not record:
         await callback.answer("File record not found.", show_alert=True)
         return
 
     srv_url = get_server_url()
-    watch_url = f"{srv_url}/watch/{f_id}"
-    dl_url = f"{srv_url}/dl/{f_id}"
-    original_markup = build_file_markup(watch_url, dl_url, f_id)
+    watch_url = f"{srv_url}/watch/{disp_id}"
+    dl_url = f"{srv_url}/dl/{disp_id}"
+    original_markup = build_file_markup(watch_url, dl_url, disp_id)
 
     try:
         await callback.message.edit_reply_markup(reply_markup=original_markup)
@@ -513,8 +628,8 @@ async def cb_delete_cancel(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("del:confirm:"))
 async def cb_delete_confirm(callback: types.CallbackQuery):
-    f_id = int(callback.data.split(":")[2])
-    record = await db.get_file_by_id_or_token(f_id)
+    disp_id = callback.data.split(":")[2]
+    record = await db.get_file_by_id_or_token(disp_id)
     if not record:
         await callback.answer("File was already deleted.", show_alert=True)
         try:
@@ -528,25 +643,12 @@ async def cb_delete_confirm(callback: types.CallbackQuery):
         await callback.answer("⚠️ You can only delete your own uploads.", show_alert=True)
         return
 
-    await db.delete_file_by_id_or_token(f_id)
+    await db.delete_file_by_id_or_token(disp_id)
     try:
         await callback.message.delete()
     except TelegramBadRequest:
         pass
     await callback.answer("🗑️ Streaming link deleted successfully!", show_alert=True)
-
-@dp.callback_query(F.data == "usage:refresh")
-async def cb_usage_refresh(callback: types.CallbackQuery, bot: Bot):
-    if callback.from_user.id != OWNER_ID:
-        await callback.answer("Access restricted to bot owner.", show_alert=True)
-        return
-
-    text, markup = await build_usage_card_text(bot)
-    try:
-        await callback.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
-    except TelegramBadRequest:
-        pass
-    await callback.answer("Metrics refreshed.")
 
 # ==============================================================================
 # MEDIA UPLOAD HANDLER
@@ -582,15 +684,14 @@ async def handle_media_file(message: types.Message):
         else:
             file_name = f"file_{file_unique_id[:8]}.bin"
 
-    # 1. Deduplication Cache Check
+    # 1. Deduplication Cache Check: If exact same file was already sent, return existing link!
     cached = await db.find_file_by_unique_id(file_unique_id)
     if cached:
-        file_db_id = cached["id"]
+        disp_id = cached.get("display_id") or str(cached["id"])
         srv_url = get_server_url()
-        watch_url = f"{srv_url}/watch/{file_db_id}"
-        dl_url = f"{srv_url}/dl/{file_db_id}"
+        watch_url = f"{srv_url}/watch/{disp_id}"
+        dl_url = f"{srv_url}/dl/{disp_id}"
         card_text = build_file_card_text(
-            file_id=file_db_id,
             file_name=cached["file_name"],
             file_size=cached["file_size"],
             mime_type=cached["mime_type"],
@@ -598,11 +699,11 @@ async def handle_media_file(message: types.Message):
             dl_url=dl_url,
             is_cached=True
         )
-        markup = build_file_markup(watch_url, dl_url, file_db_id)
+        markup = build_file_markup(watch_url, dl_url, disp_id)
         await message.reply(card_text, parse_mode=ParseMode.HTML, reply_markup=markup, link_preview_options=types.LinkPreviewOptions(is_disabled=True))
         return
 
-    # 2. Save new record to database
+    # 2. Save new record with sequential date format ID: e.g. 21112026001, 21112026002
     token = secrets.token_urlsafe(12)
     record = await db.save_file_record(
         token=token,
@@ -614,14 +715,13 @@ async def handle_media_file(message: types.Message):
         mime_type=mime_type
     )
 
-    file_db_id = record["id"]
+    disp_id = record["display_id"]
     srv_url = get_server_url()
-    dl_url = f"{srv_url}/dl/{file_db_id}"
-    watch_url = f"{srv_url}/watch/{file_db_id}"
+    dl_url = f"{srv_url}/dl/{disp_id}"
+    watch_url = f"{srv_url}/watch/{disp_id}"
 
-    # 3. Build Single Clean Response Card
+    # 3. Build Single Clean Response Card (No ID shown on main card)
     card_text = build_file_card_text(
-        file_id=file_db_id,
         file_name=file_name,
         file_size=file_size,
         mime_type=mime_type,
@@ -629,7 +729,7 @@ async def handle_media_file(message: types.Message):
         dl_url=dl_url,
         is_cached=False
     )
-    markup = build_file_markup(watch_url, dl_url, file_db_id)
+    markup = build_file_markup(watch_url, dl_url, disp_id)
 
     await message.reply(
         card_text,
