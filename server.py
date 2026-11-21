@@ -37,11 +37,11 @@ async def init_pyrogram_client():
                 bot_token=BOT_TOKEN,
                 no_updates=True,
                 in_memory=True,
-                max_concurrent_transmissions=10
+                max_concurrent_transmissions=16
             )
             await pyrogram_client.start()
             me = await pyrogram_client.get_me()
-            print(f"[MTProto] Streaming engine connected as @{me.username}! (2GB+ streaming online)")
+            print(f"[MTProto] Turbo streaming engine connected as @{me.username}! (TgCrypto C-accelerator online)")
         except Exception as e:
             print(f"[MTProto] Failed to initialize Pyrogram client: {e}")
             pyrogram_client = None
@@ -365,9 +365,14 @@ async def handle_media_transfer(request: web.Request, is_download: bool) -> web.
             status_code = 206 if range_header else 200
 
             response = web.StreamResponse(status=status_code)
+            response.enable_compression(False)
             response.headers["Content-Type"] = mime_type
             response.headers["Content-Length"] = str(content_length)
             response.headers["Accept-Ranges"] = "bytes"
+            response.headers["Cache-Control"] = "public, max-age=86400, immutable"
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "Range, Accept-Ranges, Content-Range, Content-Length"
+            response.headers["Access-Control-Expose-Headers"] = "Content-Length, Content-Range, Accept-Ranges"
             
             disposition_type = "attachment" if is_download else "inline"
             response.headers["Content-Disposition"] = f'{disposition_type}; filename="{safe_name}"'
