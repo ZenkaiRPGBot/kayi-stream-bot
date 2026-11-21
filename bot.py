@@ -13,7 +13,8 @@ from aiogram.filters import Command, CommandStart
 from aiogram.enums import ParseMode
 from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton, CopyTextButton,
-    BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+    BotCommand, BotCommandScopeDefault, BotCommandScopeChat,
+    MenuButtonWebApp, WebAppInfo
 )
 from aiogram.exceptions import TelegramBadRequest
 
@@ -290,6 +291,17 @@ async def setup_bot_commands(bot: Bot):
     except Exception:
         pass
 
+    # Automatically set Telegram bottom menu button to WebApp if HTTPS is active
+    srv_url = get_server_url()
+    if srv_url.startswith("https://"):
+        try:
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(text="Open App", web_app=WebAppInfo(url=srv_url))
+            )
+            print(f"[menu] Bottom chat menu button configured to WebApp: {srv_url}")
+        except Exception as e:
+            print(f"[menu] Could not configure chat menu button: {e}")
+
 async def send_restart_notification(bot: Bot):
     try:
         commit_res = subprocess.run(
@@ -346,12 +358,16 @@ async def cmd_start(message: types.Message):
         "👉 <b>Send or forward any file below to generate your link!</b>"
     )
 
-    # Clean buttons for users (no catalog button for regular users)
+    # Clean buttons for users with direct Mini App access
+    srv_url = get_server_url()
+    first_row = []
+    if srv_url.startswith("https://"):
+        first_row.append(InlineKeyboardButton(text="Open Mini App 🚀", web_app=types.WebAppInfo(url=srv_url), style="primary"))
+    first_row.append(InlineKeyboardButton(text="My Files 📂", callback_data="user:myfiles"))
+
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="My Files 📂", callback_data="user:myfiles", style="primary"),
-            InlineKeyboardButton(text="Help & Guide 📖", callback_data="help:tab:about")
-        ]
+        first_row,
+        [InlineKeyboardButton(text="Help & Guide 📖", callback_data="help:tab:about")]
     ])
 
     await message.reply(text, parse_mode=ParseMode.HTML, reply_markup=markup)

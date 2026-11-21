@@ -28,6 +28,10 @@ while True:
                 print(f"==========================================\n", flush=True)
                 with open(tunnel_file, "w") as f:
                     f.write(url)
+            if "Tunnel not found" in clean_l or "Unauthorized" in clean_l:
+                print("[cf] Detected dead tunnel session. Forcing restart...", flush=True)
+                proc.kill()
+                break
         proc.wait()
     except Exception as e:
         print(f"[tunnel error] {e}", flush=True)

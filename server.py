@@ -82,6 +82,13 @@ def detect_quality_tag(file_name: str, file_size: int) -> str:
     return "Direct"
 
 async def handle_root(request: web.Request) -> web.Response:
+    dashboard_path = os.path.join(STATIC_DIR, "dashboard.html")
+    if os.path.exists(dashboard_path):
+        with open(dashboard_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        html = html.replace("{{brand_name}}", BRAND_NAME)
+        return web.Response(text=html, content_type="text/html")
+
     stats = await db.get_global_stats()
     storage_fmt = format_file_size(stats["active_bytes"])
     html = f"""<!DOCTYPE html>
@@ -89,77 +96,86 @@ async def handle_root(request: web.Request) -> web.Response:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#FFFFFF">
+<meta name="theme-color" content="#0B0C10">
 <title>{BRAND_NAME}</title>
-<style>
-:root {{
-  --bg-color: #FFFFFF;
-  --surface-color: #F5F5F7;
-  --text-primary: #1D1D1F;
-  --text-secondary: #6E6E73;
-  --border-color: #E5E5EA;
-  --accent-color: #0A84FF;
-  --radius-md: 12px;
-}}
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{
-  font-family: Inter, system-ui, -apple-system, sans-serif;
-  background-color: var(--bg-color);
-  color: var(--text-primary);
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}}
-.card {{
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 18px;
-  padding: 40px 32px;
-  max-width: 440px;
-  width: 100%;
-  text-align: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-}}
-h1 {{ font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }}
-p {{ color: var(--text-secondary); font-size: 14px; line-height: 1.5; margin-bottom: 24px; }}
-.stats {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 28px; }}
-.stat {{ background-color: var(--surface-color); border-radius: var(--radius-md); padding: 12px 8px; }}
-.stat-num {{ font-size: 17px; font-weight: 700; color: var(--accent-color); }}
-.stat-lbl {{ font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-top: 3px; letter-spacing: 0.06em; }}
-.btn {{
-  display: flex; align-items: center; justify-content: center; width: 100%;
-  padding: 13px; border-radius: var(--radius-md); font-size: 15px; font-weight: 600;
-  text-decoration: none; color: #FFFFFF; background-color: var(--accent-color);
-  transition: opacity 150ms ease-out;
-}}
-.btn:hover {{ opacity: 0.9; }}
-</style>
 </head>
-<body>
-<div class="card">
-  <h1>{BRAND_NAME}</h1>
-  <p>Minimal, high-performance streaming and file downloads. No clutter, zero latency.</p>
-  <div class="stats">
-    <div class="stat">
-      <div class="stat-num">{stats['active_links']}</div>
-      <div class="stat-lbl">Active</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">{storage_fmt}</div>
-      <div class="stat-lbl">Storage</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">{stats['total_downloads']}</div>
-      <div class="stat-lbl">Downloads</div>
-    </div>
+<body style="background:#0B0C10;color:#E6EDF3;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+  <div style="text-align:center;padding:24px;">
+    <h1>{BRAND_NAME} Hub</h1>
+    <p style="color:#8B949E;margin-top:8px;">Active Streams: {stats['active_files']} · Storage: {storage_fmt}</p>
   </div>
-  <a href="https://t.me/{CHANNEL_USERNAME.lstrip('@')}" class="btn">Launch on Telegram</a>
-</div>
 </body>
 </html>"""
     return web.Response(text=html, content_type="text/html")
+
+async def handle_api_user_files(request: web.Request) -> web.Response:
+    user_id_str = request.query.get("user_id")
+    if not user_id_str:
+        return web.json_response({"status": "error", "message": "Missing user_id", "files": []})
+    try:
+        user_id = int(user_id_str)
+    except ValueError:
+        return web.json_response({"status": "error", "message": "Invalid user_id", "files": []})
+
+    files = await db.get_user_files(user_id, limit=50)
+    base_url = get_server_url()
+
+    formatted = []
+    for f in files:
+        disp_id = f.get("display_id") or str(f["id"])
+        formatted.append({
+            "id": f["id"],
+            "display_id": disp_id,
+            "token": f["token"],
+            "name": f["file_name"],
+            "size": f["file_size"],
+            "size_fmt": format_file_size(f["file_size"]),
+            "mime_type": f["mime_type"],
+            "category": get_media_category(f["mime_type"], f["file_name"]),
+            "quality": detect_quality_tag(f["file_name"], f["file_size"]),
+            "created_at": f["created_at"],
+            "watch_url": f"{base_url}/watch/{disp_id}",
+            "stream_url": f"{base_url}/stream/{disp_id}",
+            "dl_url": f"{base_url}/dl/{disp_id}"
+        })
+    return web.json_response({"status": "success", "count": len(formatted), "files": formatted})
+
+async def handle_api_stats(request: web.Request) -> web.Response:
+    stats = await db.get_global_stats()
+    return web.json_response({
+        "status": "success",
+        "total_files": stats.get("total_files", 0),
+        "active_files": stats.get("active_links", 0),
+        "active_links": stats.get("active_links", 0),
+        "active_bytes": stats.get("active_bytes", 0),
+        "active_bytes_fmt": format_file_size(stats.get("active_bytes", 0)),
+        "total_downloads": stats.get("total_downloads", 0)
+    })
+
+async def handle_api_file_info(request: web.Request) -> web.Response:
+    identifier = request.match_info.get("identifier")
+    record = await db.get_file_by_id_or_token(identifier)
+    if not record:
+        return web.json_response({"status": "error", "message": "File not found or expired"}, status=404)
+    base_url = get_server_url()
+    disp_id = record.get("display_id") or str(record["id"])
+    return web.json_response({
+        "status": "success",
+        "file": {
+            "id": record["id"],
+            "display_id": disp_id,
+            "token": record["token"],
+            "name": record["file_name"],
+            "size": record["file_size"],
+            "size_fmt": format_file_size(record["file_size"]),
+            "mime_type": record["mime_type"],
+            "category": get_media_category(record["mime_type"], record["file_name"]),
+            "quality": detect_quality_tag(record["file_name"], record["file_size"]),
+            "watch_url": f"{base_url}/watch/{disp_id}",
+            "stream_url": f"{base_url}/stream/{disp_id}",
+            "dl_url": f"{base_url}/dl/{disp_id}"
+        }
+    })
 
 async def handle_health(request: web.Request) -> web.Response:
     stats = await db.get_global_stats()
@@ -492,10 +508,17 @@ async def start_server():
 
     app = web.Application()
     app.router.add_get("/", handle_root)
+    app.router.add_get("/app", handle_root)
+    app.router.add_get("/webapp", handle_root)
     app.router.add_get("/health", handle_health)
     
-    # Static files route for player.css and player.js
+    # Static files route for player.css, player.js, dashboard.js
     app.router.add_static("/static", path=STATIC_DIR, name="static")
+
+    # API endpoints for Mini App & dashboard
+    app.router.add_get("/api/user/files", handle_api_user_files)
+    app.router.add_get("/api/stats", handle_api_stats)
+    app.router.add_get("/api/file/{identifier}", handle_api_file_info)
 
     # API endpoints for tracks & subtitles
     app.router.add_get("/api/media/{identifier}/tracks", handle_get_tracks)
