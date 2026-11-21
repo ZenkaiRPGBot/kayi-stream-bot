@@ -245,6 +245,13 @@ async def handle_watch(request: web.Request) -> web.Response:
         "dl_url": dl_url
     }
 
+    t_val = request.query.get("t")
+    if t_val:
+        try:
+            initial_file["resume_time"] = float(t_val)
+        except (ValueError, TypeError):
+            pass
+
     index_path = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:

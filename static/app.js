@@ -170,21 +170,28 @@
   }
 
   function checkAndResumeProgress(file) {
-    if (hasResumedCurrentVideo) return;
+    if (hasResumedCurrentVideo || !file) return;
     let seekTarget = null;
 
+    // 0. Check file.resume_time (injected directly by server from ?t=)
+    if (file.resume_time && isFinite(file.resume_time) && file.resume_time > 0) {
+      seekTarget = file.resume_time;
+    }
+
     // 1. Check URL query param ?t= or hash #t= (e.g. from "Open in Browser")
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const tStr = urlParams.get('t');
-      if (tStr) {
-        const val = parseFloat(tStr);
-        if (isFinite(val) && val > 0) seekTarget = val;
-      } else if (window.location.hash.startsWith('#t=')) {
-        const val = parseFloat(window.location.hash.slice(3));
-        if (isFinite(val) && val > 0) seekTarget = val;
-      }
-    } catch (_) {}
+    if (seekTarget === null) {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const tStr = urlParams.get('t');
+        if (tStr) {
+          const val = parseFloat(tStr);
+          if (isFinite(val) && val > 0) seekTarget = val;
+        } else if (window.location.hash.startsWith('#t=')) {
+          const val = parseFloat(window.location.hash.slice(3));
+          if (isFinite(val) && val > 0) seekTarget = val;
+        }
+      } catch (_) {}
+    }
 
     // 2. Check local progress store
     if (seekTarget === null) {
@@ -192,22 +199,28 @@
       if (key) {
         try {
           const saved = parseFloat(localStorage.getItem(key));
-          if (saved && saved > 3) seekTarget = saved;
+          if (saved && isFinite(saved) && saved > 2) seekTarget = saved;
         } catch (_) {}
       }
     }
 
-    if (seekTarget === null) return;
+    if (seekTarget === null || seekTarget <= 2) return;
 
     try {
       const playerEl = (moviPlayer && moviPlayer.style.display !== 'none') ? moviPlayer : nativeFallback;
-      const dur = playerEl?.duration;
+      if (!playerEl) return;
+      const dur = playerEl.duration;
       if (seekTarget > 0 && (!isFinite(dur) || dur <= 0 || seekTarget < dur - 3)) {
         hasResumedCurrentVideo = true;
-        if (playerEl) {
-          playerEl.currentTime = seekTarget;
-        }
+        playerEl.currentTime = seekTarget;
         showToast(`Resumed from ${formatTime(seekTarget)}`);
+
+        // Re-check after brief delay in case player was mid-demux initialization
+        setTimeout(() => {
+          if (playerEl && Math.abs(playerEl.currentTime - seekTarget) > 3) {
+            try { playerEl.currentTime = seekTarget; } catch (_) {}
+          }
+        }, 800);
       }
     } catch (_) {}
   }
@@ -604,6 +617,10 @@
         this.canvas.style.pointerEvents = 'none';
         this.canvas.style.zIndex = '10';
         this.canvas.style.display = 'block';
+        this.canvas.style.transformOrigin = 'bottom center';
+        if (this.scale && this.scale !== 1.0) {
+          this.canvas.style.transform = `scale(${this.scale})`;
+        }
         this.canvas.width = 1920;
         this.canvas.height = 1080;
         this.currentRenderW = 1920;
@@ -611,6 +628,14 @@
       }
       if (parent && this.canvas.parentNode !== parent) {
         parent.appendChild(this.canvas);
+      }
+    }
+
+    setScale(scale) {
+      this.scale = scale || 1.0;
+      if (this.canvas) {
+        this.canvas.style.transformOrigin = 'bottom center';
+        this.canvas.style.transform = this.scale !== 1.0 ? `scale(${this.scale})` : '';
       }
     }
 
@@ -1096,6 +1121,7 @@
       unlockAudio();
       autoSelectSubtitle();
       syncSubtitleRenderer();
+      applySubtitleCustomization(activeSubSize);
       if (currentActiveFile) checkAndResumeProgress(currentActiveFile);
     });
 
@@ -1110,6 +1136,8 @@
       dismissPlayerLoading();
       unlockAudio();
       autoSelectSubtitle();
+      applySubtitleCustomization(activeSubSize);
+      if (currentActiveFile) checkAndResumeProgress(currentActiveFile);
     });
 
     moviPlayer.addEventListener('waiting', () => {
@@ -1118,6 +1146,7 @@
 
     moviPlayer.addEventListener('timeupdate', () => {
       dismissPlayerLoading();
+      if (currentActiveFile && !hasResumedCurrentVideo) checkAndResumeProgress(currentActiveFile);
       savePlaybackProgress();
     });
 
@@ -1295,10 +1324,28 @@
   function openInWebBrowser(file) {
     if (!file) return;
     const playerEl = (moviPlayer && moviPlayer.style.display !== 'none') ? moviPlayer : nativeFallback;
-    const curTime = Math.floor(playerEl?.currentTime || 0);
+    let curTime = Math.floor(playerEl?.currentTime || 0);
+
+    // If stream hasn't started yet in WebApp, grab latest saved progress from storage
+    if (curTime <= 2) {
+      const key = getFileProgressKey(file);
+      if (key) {
+        try {
+          const saved = parseFloat(localStorage.getItem(key));
+          if (saved && isFinite(saved) && saved > 2) {
+            curTime = Math.floor(saved);
+          }
+        } catch (_) {}
+      }
+    }
+
+    // Also check if initial file object had resume_time
+    if (curTime <= 2 && file.resume_time && isFinite(file.resume_time) && file.resume_time > 2) {
+      curTime = Math.floor(file.resume_time);
+    }
 
     const baseWatchUrl = file.watch_url || `${window.location.origin}/watch/${file.display_id || file.id}`;
-    const targetUrl = curTime > 3 ? `${baseWatchUrl}?t=${curTime}` : baseWatchUrl;
+    const targetUrl = curTime > 2 ? `${baseWatchUrl}?t=${curTime}` : baseWatchUrl;
 
     savePlaybackProgress();
 
@@ -1307,7 +1354,7 @@
     } else {
       window.open(targetUrl, '_blank');
     }
-    showToast(curTime > 3 ? `Opening browser from ${formatTime(curTime)}...` : 'Opening in browser...');
+    showToast(curTime > 2 ? `Opening browser from ${formatTime(curTime)}...` : 'Opening in browser...');
     triggerHaptic('medium');
   }
 
@@ -1562,20 +1609,56 @@
   });
 
   // Subtitle size controls
+  function applySubtitleCustomization(size) {
+    activeSubSize = size || localStorage.getItem('kayi_sub_size') || 'normal';
+    localStorage.setItem('kayi_sub_size', activeSubSize);
+
+    let px = '18px';
+    let jassubScale = 1.0;
+    if (activeSubSize === 'small') { px = '14px'; jassubScale = 0.78; }
+    if (activeSubSize === 'normal') { px = '18px'; jassubScale = 1.0; }
+    if (activeSubSize === 'large') { px = '25px'; jassubScale = 1.38; }
+
+    document.documentElement.style.setProperty('--sub-font-size', px);
+    if (subPreviewText) subPreviewText.style.fontSize = px;
+
+    // Apply to movi-player and inject into shadowRoot
+    if (moviPlayer) {
+      moviPlayer.style.setProperty('--sub-font-size', px);
+      moviPlayer.style.setProperty('--movi-sub-font-size', px);
+      moviPlayer.style.setProperty('--movi-subtitle-font-size', px);
+
+      if (moviPlayer.shadowRoot) {
+        let customStyle = moviPlayer.shadowRoot.getElementById('kayi-sub-custom-style');
+        if (!customStyle) {
+          customStyle = document.createElement('style');
+          customStyle.id = 'kayi-sub-custom-style';
+          moviPlayer.shadowRoot.appendChild(customStyle);
+        }
+        customStyle.textContent = `
+          ::part(subtitle), [part*="subtitle"], [part*="sub"], .movi-subtitle, .subtitle, .subtitles-container, .subtitles-container * {
+            font-size: ${px} !important;
+            line-height: 1.35 !important;
+          }
+        `;
+      }
+    }
+
+    if (nativeFallback) {
+      nativeFallback.style.setProperty('--sub-font-size', px);
+    }
+
+    if (assRenderer) {
+      assRenderer.setScale?.(jassubScale);
+    }
+  }
+
   document.querySelectorAll('.sub-size-pill').forEach((pill) => {
     pill.addEventListener('click', () => {
       document.querySelectorAll('.sub-size-pill').forEach((p) => p.classList.remove('active'));
       pill.classList.add('active');
       const size = pill.dataset.size;
-      activeSubSize = size;
-      localStorage.setItem('kayi_sub_size', size);
-
-      let px = '18px';
-      if (size === 'small') px = '14px';
-      if (size === 'large') px = '22px';
-
-      document.documentElement.style.setProperty('--sub-font-size', px);
-      subPreviewText.style.fontSize = px;
+      applySubtitleCustomization(size);
       triggerHaptic('light');
     });
   });
@@ -1583,7 +1666,11 @@
   // Apply saved subtitle size on startup
   if (activeSubSize) {
     const targetPill = document.querySelector(`.sub-size-pill[data-size="${activeSubSize}"]`);
-    if (targetPill) targetPill.click();
+    if (targetPill) {
+      document.querySelectorAll('.sub-size-pill').forEach((p) => p.classList.remove('active'));
+      targetPill.classList.add('active');
+    }
+    applySubtitleCustomization(activeSubSize);
   }
 
   // ==============================================================================
