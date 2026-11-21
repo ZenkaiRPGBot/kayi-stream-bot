@@ -27,6 +27,17 @@
   const userAvatarEl = document.getElementById('userAvatar');
   const userProfileBadge = document.getElementById('userProfileBadge');
 
+  // DOM Elements - Dashboard Segmented Tabs
+  const tabDashFiles = document.getElementById('tabDashFiles');
+  const tabDashSettings = document.getElementById('tabDashSettings');
+  const dashContentFiles = document.getElementById('dashContentFiles');
+  const dashContentSettings = document.getElementById('dashContentSettings');
+
+  // DOM Elements - Preferences & Preview
+  const dashSubPreviewCard = document.getElementById('dashSubPreviewCard');
+  const dashSubPreviewText = document.getElementById('dashSubPreviewText');
+  const prefAutoResume = document.getElementById('prefAutoResume');
+
   // DOM Elements - Search
   const searchInput = document.getElementById('searchInput');
   const searchClearBtn = document.getElementById('searchClearBtn');
@@ -80,6 +91,9 @@
   let activeAudioIndex = 0;
   let activeSubIndex = -1; // -1 = Off
   let activeSubSize = localStorage.getItem('kayi_sub_size') || 'normal';
+  let activeSubColor = localStorage.getItem('kayi_sub_color') || '#FFFFFF';
+  let activeSubBg = localStorage.getItem('kayi_sub_bg') || 'shadow';
+  let activeSeekDuration = parseInt(localStorage.getItem('kayi_seek_duration') || '10', 10);
   let hideControlsTimer = null;
   let pendingDeleteFileId = null;
 
@@ -193,8 +207,9 @@
       } catch (_) {}
     }
 
-    // 2. Check local progress store
-    if (seekTarget === null) {
+    // 2. Check local progress store (if auto-resume preference is enabled)
+    const autoResumeEnabled = localStorage.getItem('kayi_auto_resume') !== 'false';
+    if (seekTarget === null && autoResumeEnabled) {
       const key = getFileProgressKey(file);
       if (key) {
         try {
@@ -1225,9 +1240,11 @@
           activeEl.pause();
         }
       } else if (e.code === 'ArrowLeft') {
-        activeEl.currentTime = Math.max(0, activeEl.currentTime - 10);
+        const step = (typeof activeSeekDuration === 'number' && activeSeekDuration > 0) ? activeSeekDuration : 10;
+        activeEl.currentTime = Math.max(0, activeEl.currentTime - step);
       } else if (e.code === 'ArrowRight') {
-        activeEl.currentTime = Math.min(activeEl.duration || Infinity, activeEl.currentTime + 10);
+        const step = (typeof activeSeekDuration === 'number' && activeSeekDuration > 0) ? activeSeekDuration : 10;
+        activeEl.currentTime = Math.min(activeEl.duration || Infinity, activeEl.currentTime + step);
       }
     }
   });
@@ -1608,19 +1625,83 @@
     triggerHaptic('select');
   });
 
-  // Subtitle size controls
-  function applySubtitleCustomization(size) {
-    activeSubSize = size || localStorage.getItem('kayi_sub_size') || 'normal';
+  // ==============================================================================
+  // DASHBOARD SEGMENTED TABS (MY FILES vs PREFERENCES)
+  // ==============================================================================
+
+  if (tabDashFiles && tabDashSettings) {
+    tabDashFiles.addEventListener('click', () => {
+      tabDashFiles.classList.add('active');
+      tabDashSettings.classList.remove('active');
+      if (dashContentFiles) dashContentFiles.classList.add('active');
+      if (dashContentSettings) dashContentSettings.classList.remove('active');
+      triggerHaptic('select');
+    });
+
+    tabDashSettings.addEventListener('click', () => {
+      tabDashSettings.classList.add('active');
+      tabDashFiles.classList.remove('active');
+      if (dashContentSettings) dashContentSettings.classList.add('active');
+      if (dashContentFiles) dashContentFiles.classList.remove('active');
+      triggerHaptic('select');
+    });
+  }
+
+  // ==============================================================================
+  // DASHBOARD PREFERENCES & SUBTITLE CUSTOMIZATION
+  // ==============================================================================
+
+  function applySubtitleCustomization(size, color, bg) {
+    if (size) activeSubSize = size;
+    if (color) activeSubColor = color;
+    if (bg) activeSubBg = bg;
+
     localStorage.setItem('kayi_sub_size', activeSubSize);
+    localStorage.setItem('kayi_sub_color', activeSubColor);
+    localStorage.setItem('kayi_sub_bg', activeSubBg);
 
     let px = '18px';
     let jassubScale = 1.0;
     if (activeSubSize === 'small') { px = '14px'; jassubScale = 0.78; }
-    if (activeSubSize === 'normal') { px = '18px'; jassubScale = 1.0; }
-    if (activeSubSize === 'large') { px = '25px'; jassubScale = 1.38; }
+    else if (activeSubSize === 'large') { px = '25px'; jassubScale = 1.38; }
+    else { px = '18px'; jassubScale = 1.0; }
 
+    let bgStyle = 'transparent';
+    let shadowStyle = '0 0 4px #000, -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0 2px 5px rgba(0,0,0,0.9)';
+    let padStyle = '0';
+    let radiusStyle = '0';
+
+    if (activeSubBg === 'translucent') {
+      bgStyle = 'rgba(0, 0, 0, 0.72)';
+      shadowStyle = '0 1px 3px rgba(0,0,0,0.8)';
+      padStyle = '3px 8px';
+      radiusStyle = '4px';
+    } else if (activeSubBg === 'solid') {
+      bgStyle = '#000000';
+      shadowStyle = 'none';
+      padStyle = '3px 8px';
+      radiusStyle = '4px';
+    }
+
+    // Set root CSS variables for global cues
     document.documentElement.style.setProperty('--sub-font-size', px);
-    if (subPreviewText) subPreviewText.style.fontSize = px;
+    document.documentElement.style.setProperty('--sub-color', activeSubColor);
+    document.documentElement.style.setProperty('--sub-bg', bgStyle);
+    document.documentElement.style.setProperty('--sub-shadow', shadowStyle);
+
+    // Update Live Preview on Dashboard
+    if (dashSubPreviewText) {
+      dashSubPreviewText.style.fontSize = px;
+      dashSubPreviewText.style.color = activeSubColor;
+      dashSubPreviewText.style.background = bgStyle;
+      dashSubPreviewText.style.textShadow = shadowStyle;
+      dashSubPreviewText.style.padding = padStyle;
+      dashSubPreviewText.style.borderRadius = radiusStyle;
+    }
+    if (subPreviewText) {
+      subPreviewText.style.fontSize = px;
+      subPreviewText.style.color = activeSubColor;
+    }
 
     // Apply to movi-player and inject into shadowRoot
     if (moviPlayer) {
@@ -1638,6 +1719,11 @@
         customStyle.textContent = `
           ::part(subtitle), [part*="subtitle"], [part*="sub"], .movi-subtitle, .subtitle, .subtitles-container, .subtitles-container * {
             font-size: ${px} !important;
+            color: ${activeSubColor} !important;
+            background: ${bgStyle} !important;
+            text-shadow: ${shadowStyle} !important;
+            padding: ${padStyle} !important;
+            border-radius: ${radiusStyle} !important;
             line-height: 1.35 !important;
           }
         `;
@@ -1646,6 +1732,8 @@
 
     if (nativeFallback) {
       nativeFallback.style.setProperty('--sub-font-size', px);
+      nativeFallback.style.setProperty('--sub-color', activeSubColor);
+      nativeFallback.style.setProperty('--sub-bg', bgStyle);
     }
 
     if (assRenderer) {
@@ -1653,25 +1741,88 @@
     }
   }
 
+  // Subtitle size pills
   document.querySelectorAll('.sub-size-pill').forEach((pill) => {
     pill.addEventListener('click', () => {
       document.querySelectorAll('.sub-size-pill').forEach((p) => p.classList.remove('active'));
       pill.classList.add('active');
-      const size = pill.dataset.size;
-      applySubtitleCustomization(size);
+      applySubtitleCustomization(pill.dataset.size, null, null);
       triggerHaptic('light');
     });
   });
 
-  // Apply saved subtitle size on startup
-  if (activeSubSize) {
-    const targetPill = document.querySelector(`.sub-size-pill[data-size="${activeSubSize}"]`);
-    if (targetPill) {
-      document.querySelectorAll('.sub-size-pill').forEach((p) => p.classList.remove('active'));
-      targetPill.classList.add('active');
-    }
-    applySubtitleCustomization(activeSubSize);
+  // Subtitle color pills
+  document.querySelectorAll('.sub-color-pill').forEach((pill) => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.sub-color-pill').forEach((p) => p.classList.remove('active'));
+      pill.classList.add('active');
+      applySubtitleCustomization(null, pill.dataset.color, null);
+      triggerHaptic('light');
+    });
+  });
+
+  // Subtitle backdrop pills
+  document.querySelectorAll('.sub-bg-pill').forEach((pill) => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.sub-bg-pill').forEach((p) => p.classList.remove('active'));
+      pill.classList.add('active');
+      applySubtitleCustomization(null, null, pill.dataset.bg);
+      triggerHaptic('light');
+    });
+  });
+
+  // Auto-resume preference toggle
+  if (prefAutoResume) {
+    const savedAutoResume = localStorage.getItem('kayi_auto_resume') !== 'false';
+    prefAutoResume.checked = savedAutoResume;
+    prefAutoResume.addEventListener('change', () => {
+      localStorage.setItem('kayi_auto_resume', prefAutoResume.checked ? 'true' : 'false');
+      triggerHaptic('light');
+      showToast(prefAutoResume.checked ? 'Auto-resume enabled' : 'Auto-resume disabled');
+    });
   }
+
+  // Seek skip duration pills
+  document.querySelectorAll('.sub-seek-pill').forEach((pill) => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.sub-seek-pill').forEach((p) => p.classList.remove('active'));
+      pill.classList.add('active');
+      activeSeekDuration = parseInt(pill.dataset.seek || '10', 10);
+      localStorage.setItem('kayi_seek_duration', activeSeekDuration);
+      triggerHaptic('light');
+      showToast(`Seek interval set to ${activeSeekDuration}s`);
+    });
+  });
+
+  // Sync preference UI buttons with saved state on startup
+  function initPreferencePills() {
+    const sizePill = document.querySelector(`.sub-size-pill[data-size="${activeSubSize}"]`);
+    if (sizePill) {
+      document.querySelectorAll('.sub-size-pill').forEach((p) => p.classList.remove('active'));
+      sizePill.classList.add('active');
+    }
+
+    const colorPill = document.querySelector(`.sub-color-pill[data-color="${activeSubColor}"]`);
+    if (colorPill) {
+      document.querySelectorAll('.sub-color-pill').forEach((p) => p.classList.remove('active'));
+      colorPill.classList.add('active');
+    }
+
+    const bgPill = document.querySelector(`.sub-bg-pill[data-bg="${activeSubBg}"]`);
+    if (bgPill) {
+      document.querySelectorAll('.sub-bg-pill').forEach((p) => p.classList.remove('active'));
+      bgPill.classList.add('active');
+    }
+
+    const seekPill = document.querySelector(`.sub-seek-pill[data-seek="${activeSeekDuration}"]`);
+    if (seekPill) {
+      document.querySelectorAll('.sub-seek-pill').forEach((p) => p.classList.remove('active'));
+      seekPill.classList.add('active');
+    }
+
+    applySubtitleCustomization(activeSubSize, activeSubColor, activeSubBg);
+  }
+  initPreferencePills();
 
   // ==============================================================================
   // EXTERNAL PLAYERS (VLC, MX Player)

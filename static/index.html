@@ -66,37 +66,165 @@
           <p class="welcome-subtitle">Your files, ready whenever you are.</p>
         </div>
 
-        <!-- Search Bar -->
-        <div class="search-container">
-          <div class="search-input-wrap">
-            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+        <!-- Dashboard Segmented Navigation Tabs -->
+        <div class="dash-nav-segmented">
+          <button class="dash-nav-tab-btn active" id="tabDashFiles">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
             </svg>
-            <input type="text" class="search-field" id="searchInput" placeholder="Search files or paste a link" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-            <button class="search-clear-btn" id="searchClearBtn" aria-label="Clear search">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>
+            <span>My Files</span>
+          </button>
+          <button class="dash-nav-tab-btn" id="tabDashSettings">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            <span>Preferences</span>
+          </button>
+        </div>
+
+        <!-- DASHBOARD TAB 1: FILES LIBRARY -->
+        <div class="dash-tab-content active" id="dashContentFiles">
+          <!-- Search Bar -->
+          <div class="search-container">
+            <div class="search-input-wrap">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
               </svg>
-            </button>
+              <input type="text" class="search-field" id="searchInput" placeholder="Search files or paste a link" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+              <button class="search-clear-btn" id="searchClearBtn" aria-label="Clear search">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Section Header -->
+          <div class="section-header">
+            <h2 class="section-title">My Files</h2>
+            <span class="section-count" id="filesCountBadge">0</span>
+          </div>
+
+          <!-- File Library Grid (Dynamically Populated) -->
+          <div class="file-library-grid" id="fileLibraryGrid"></div>
+
+          <!-- Empty State Card -->
+          <div class="empty-state-card" id="emptyStateCard" style="display: none;">
+            <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+            </svg>
+            <h3 class="empty-state-title">Your library is empty.</h3>
+            <p class="empty-state-desc">Send any video or file to @KayiStreamBot in Telegram to stream and download it anytime.</p>
           </div>
         </div>
 
-        <!-- Section Header -->
-        <div class="section-header">
-          <h2 class="section-title">My Files</h2>
-          <span class="section-count" id="filesCountBadge">0</span>
-        </div>
+        <!-- DASHBOARD TAB 2: PREFERENCES & SETTINGS -->
+        <div class="dash-tab-content" id="dashContentSettings" style="display: none;">
 
-        <!-- File Library Grid (Dynamically Populated) -->
-        <div class="file-library-grid" id="fileLibraryGrid"></div>
+          <!-- Card 1: Subtitle Appearance Customization -->
+          <div class="pref-card">
+            <div class="pref-card-header">
+              <div class="pref-icon-box">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  <path d="M7 10h10M7 14h6"/>
+                </svg>
+              </div>
+              <div class="pref-title-wrap">
+                <h3 class="pref-title">Subtitle Appearance</h3>
+                <p class="pref-subtitle">Customize text size, color, and background across all videos</p>
+              </div>
+            </div>
 
-        <!-- Empty State Card -->
-        <div class="empty-state-card" id="emptyStateCard" style="display: none;">
-          <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
-          </svg>
-          <h3 class="empty-state-title">Your library is empty.</h3>
-          <p class="empty-state-desc">Send any video or file to @KayiStreamBot in Telegram to stream and download it anytime.</p>
+            <!-- Setting: Subtitle Size -->
+            <div class="pref-group">
+              <label class="pref-label">Font Size</label>
+              <div class="sub-size-segmented-wrap">
+                <button class="sub-size-pill" data-size="small">Small</button>
+                <button class="sub-size-pill active" data-size="normal">Normal</button>
+                <button class="sub-size-pill" data-size="large">Large</button>
+              </div>
+            </div>
+
+            <!-- Setting: Subtitle Color -->
+            <div class="pref-group">
+              <label class="pref-label">Subtitle Color</label>
+              <div class="sub-color-segmented-wrap">
+                <button class="sub-color-pill active" data-color="#FFFFFF" title="Classic White">
+                  <span class="color-dot" style="background:#FFFFFF; border: 1px solid #CBD5E1;"></span>
+                  <span>White</span>
+                </button>
+                <button class="sub-color-pill" data-color="#FDE047" title="Cinema Yellow">
+                  <span class="color-dot" style="background:#FDE047;"></span>
+                  <span>Yellow</span>
+                </button>
+                <button class="sub-color-pill" data-color="#67E8F9" title="Cyber Cyan">
+                  <span class="color-dot" style="background:#67E8F9;"></span>
+                  <span>Cyan</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Setting: Background Style -->
+            <div class="pref-group">
+              <label class="pref-label">Backdrop Style</label>
+              <div class="sub-bg-segmented-wrap">
+                <button class="sub-bg-pill active" data-bg="shadow">Outline Only</button>
+                <button class="sub-bg-pill" data-bg="translucent">Translucent</button>
+                <button class="sub-bg-pill" data-bg="solid">Solid Black</button>
+              </div>
+            </div>
+
+            <!-- Live Subtitle Preview Surface -->
+            <div class="pref-preview-cinema">
+              <div class="cinema-mock-scenery">
+                <span class="cinema-tag">LIVE PREVIEW</span>
+              </div>
+              <div class="sub-preview-card" id="dashSubPreviewCard">
+                <span class="sub-preview-text" id="dashSubPreviewText">This is how subtitles will look on your screen.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: Playback & Streaming Preferences -->
+          <div class="pref-card">
+            <div class="pref-card-header">
+              <div class="pref-icon-box">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>
+                </svg>
+              </div>
+              <div class="pref-title-wrap">
+                <h3 class="pref-title">Playback & Engine</h3>
+                <p class="pref-subtitle">Auto-resume and skip intervals</p>
+              </div>
+            </div>
+
+            <!-- Setting: Auto Resume Toggle -->
+            <div class="pref-toggle-row">
+              <div class="pref-toggle-info">
+                <span class="pref-toggle-title">Remember Playback Position</span>
+                <span class="pref-toggle-desc">Automatically resume where you left off, even if links expire</span>
+              </div>
+              <label class="switch-toggle" aria-label="Toggle Auto Resume">
+                <input type="checkbox" id="prefAutoResume" checked>
+                <span class="slider-round"></span>
+              </label>
+            </div>
+
+            <!-- Setting: Seek Skip Duration -->
+            <div class="pref-group">
+              <label class="pref-label">Double Tap & Keyboard Skip Duration</label>
+              <div class="sub-seek-segmented-wrap">
+                <button class="sub-seek-pill" data-seek="5">5s</button>
+                <button class="sub-seek-pill active" data-seek="10">10s</button>
+                <button class="sub-seek-pill" data-seek="15">15s</button>
+              </div>
+            </div>
+
+          </div>
+
         </div>
 
       </section>
@@ -257,20 +385,6 @@
       <div class="track-content-section" id="trackSectionSubs">
         <span class="track-section-label">Subtitles</span>
         <div id="subTracksList"></div>
-
-        <!-- Subtitle Appearance -->
-        <div class="sub-appearance-box">
-          <span class="track-section-label">Text Size</span>
-          <div class="sub-size-segmented-wrap">
-            <button class="sub-size-pill" data-size="small">Small</button>
-            <button class="sub-size-pill active" data-size="normal">Normal</button>
-            <button class="sub-size-pill" data-size="large">Large</button>
-          </div>
-
-          <div class="sub-preview-card">
-            <span class="sub-preview-text" id="subPreviewText">Subtitle preview text</span>
-          </div>
-        </div>
       </div>
 
     </div>
