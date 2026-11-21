@@ -382,13 +382,14 @@ async def handle_media_transfer(request: web.Request, is_download: bool) -> web.
 
             await response.prepare(request)
 
-            # Pyrogram 1 MiB chunk offset
+            # Pyrogram 1 MiB chunk offset with precise limit
             chunk_size = 1024 * 1024  # 1 MiB
             chunk_offset = start_byte // chunk_size
             skip_in_first_chunk = start_byte % chunk_size
             bytes_to_send = content_length
+            chunks_needed = math.ceil((skip_in_first_chunk + bytes_to_send) / chunk_size) + 1
 
-            async for chunk in pyrogram_client.stream_media(file_id, offset=chunk_offset):
+            async for chunk in pyrogram_client.stream_media(file_id, offset=chunk_offset, limit=chunks_needed):
                 if skip_in_first_chunk > 0:
                     chunk = chunk[skip_in_first_chunk:]
                     skip_in_first_chunk = 0
