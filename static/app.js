@@ -940,6 +940,7 @@
   function dismissPlayerLoading() {
     playerReady = true;
     playerLoadingSpinner.classList.remove('visible');
+    playerErrorOverlay.classList.remove('visible');
     if (fallbackTimeoutTimer) {
       clearTimeout(fallbackTimeoutTimer);
       fallbackTimeoutTimer = null;
@@ -988,17 +989,24 @@
 
     if (fallbackTimeoutTimer) clearTimeout(fallbackTimeoutTimer);
     fallbackTimeoutTimer = setTimeout(() => {
+      const isActivelyPlaying = moviPlayer && (!moviPlayer.paused || moviPlayer.currentTime > 0);
+      if (playerReady || isActivelyPlaying) {
+        dismissPlayerLoading();
+        return;
+      }
       dismissPlayerLoading();
-      const hasInit = moviPlayer && (moviPlayer.shadowRoot || moviPlayer.readyState > 0 || moviPlayer.player);
+      const hasInit = moviPlayer && (moviPlayer.shadowRoot || moviPlayer.player);
       if (!hasInit) {
-        console.warn('[Player] Movi WASM element timeout after 20s');
+        console.warn('[Player] Movi WASM element timeout after 30s');
         if (file && file.name && file.name.match(/\.(mp4|webm)$/i)) {
           activateNativeFallback(file);
         } else {
-          playerErrorOverlay.classList.add('visible');
+          if (!isActivelyPlaying) {
+            playerErrorOverlay.classList.add('visible');
+          }
         }
       }
-    }, 20000);
+    }, 30000);
   }
 
   function activateNativeFallback(file) {
@@ -1070,6 +1078,7 @@
     });
 
     moviPlayer.addEventListener('timeupdate', () => {
+      dismissPlayerLoading();
       savePlaybackProgress();
     });
 
@@ -1084,6 +1093,10 @@
 
     moviPlayer.addEventListener('error', (e) => {
       console.warn('[MoviPlayer] Error event:', e);
+      // If audio or video has already started or is actively progressing, ignore non-fatal warnings
+      if (moviPlayer && (moviPlayer.currentTime > 0 || !moviPlayer.paused)) {
+        return;
+      }
       dismissPlayerLoading();
       // If error occurred on mp4/webm, try native fallback. Otherwise let Movi retry
       if (currentActiveFile && currentActiveFile.name && currentActiveFile.name.match(/\.(mp4|webm)$/i)) {
@@ -1109,6 +1122,7 @@
     });
     nativeFallback.addEventListener('timeupdate', savePlaybackProgress);
     nativeFallback.addEventListener('error', (e) => {
+      if (nativeFallback.style.display === 'none' || !nativeFallback.src) return;
       console.warn('[NativeFallback] Error event:', e);
       playerLoadingSpinner.classList.remove('visible');
       playerErrorOverlay.classList.add('visible');
