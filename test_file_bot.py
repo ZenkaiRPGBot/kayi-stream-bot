@@ -42,20 +42,21 @@ async def run_file_bot_test_suite():
     assert "Watch videos online" in caption
     assert "Download files easily" in caption
     assert "Share links instantly" in caption
+    assert "Need help? Use /help for instructions and feature guides." in caption
     assert "Send a file to begin" in caption
+    assert len(caption) < 1024, "Caption must fit within Telegram 1024 limit"
     print("  [PASS] 2. Verified exact welcome caption matching Phase 3.2 specifications.")
 
     # --------------------------------------------------------------------------
-    # 3. Welcome Keyboard Buttons & Targets
+    # 3. Welcome Keyboard Buttons & Targets (Simplified layout without Help buttons)
     # --------------------------------------------------------------------------
     markup = bot_module.build_welcome_keyboard()
     rows = markup.inline_keyboard
     assert any("My Files" in btn.text for row in rows for btn in row)
-    assert any(btn.callback_data == "help:tab:howto" for row in rows for btn in row)
-    assert any(btn.callback_data == "help:tab:about" for row in rows for btn in row)
+    assert not any("Help" in btn.text or "How to Use" in btn.text for row in rows for btn in row)
     assert any(btn.url == "https://t.me/KayiBots" for row in rows for btn in row)
     assert any(btn.url == "https://t.me/qouba" for row in rows for btn in row)
-    print("  [PASS] 3. Verified button layout with Mini App / My Files, Updates & Developer links.")
+    print("  [PASS] 3. Verified simplified button layout with Mini App / My Files, Updates & Developer links.")
 
     # --------------------------------------------------------------------------
     # 4. Cinematic /start Video Delivery
@@ -258,7 +259,40 @@ async def run_file_bot_test_suite():
     assert len(commit) >= 4
     print("  [PASS] 12. Streaming endpoints remain unhindered and health endpoint returns git commit.")
 
-    print("\n[SUMMARY] ALL 12/12 Kayi File to Link Bot Tests PASSED successfully!\n")
+    # --------------------------------------------------------------------------
+    # 13. Help Center Navigation & Section Handlers
+    # --------------------------------------------------------------------------
+    mock_msg_help = MagicMock()
+    mock_msg_help.from_user.id = USER_ID
+    mock_msg_help.reply = AsyncMock()
+    await bot_module.cmd_help(mock_msg_help)
+    assert mock_msg_help.reply.called
+    assert "Help Center" in str(mock_msg_help.reply.call_args)
+    reply_kb = mock_msg_help.reply.call_args[1].get("reply_markup") or mock_msg_help.reply.call_args[0][2]
+    cb_datas = [btn.callback_data for row in reply_kb.inline_keyboard for btn in row if btn.callback_data]
+    assert "help:sec:start" in cb_datas
+    assert "help:sec:streaming" in cb_datas
+    assert "help:sec:player" in cb_datas
+    assert "help:sec:manage" in cb_datas
+    assert "help:sec:troubleshoot" in cb_datas
+    assert "home" in cb_datas
+
+    # Test section navigation
+    mock_cb_sec = MagicMock()
+    mock_cb_sec.from_user.id = USER_ID
+    mock_cb_sec.data = "help:sec:player"
+    mock_cb_sec.message.video = None
+    mock_cb_sec.message.edit_text = AsyncMock()
+    mock_cb_sec.answer = AsyncMock()
+    await bot_module.cb_help_section(mock_cb_sec)
+    assert mock_cb_sec.message.edit_text.called
+    assert "Video Player & Mini App" in str(mock_cb_sec.message.edit_text.call_args)
+    sec_kb = mock_cb_sec.message.edit_text.call_args[1].get("reply_markup")
+    assert sec_kb.inline_keyboard[0][0].callback_data == "help:main"
+    assert sec_kb.inline_keyboard[0][0].text == "◀️ Back to Help"
+    print("  [PASS] 13. Unified Help Center, section callbacks, and Back to Help navigation verified.")
+
+    print("\n[SUMMARY] ALL 13/13 Kayi File to Link Bot Tests PASSED successfully!\n")
 
 if __name__ == "__main__":
     asyncio.run(run_file_bot_test_suite())
