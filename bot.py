@@ -20,13 +20,18 @@ from aiogram.exceptions import TelegramBadRequest
 
 from config import (
     BOT_TOKEN, OWNER_ID, LOG_CHANNEL_ID, BOT_START_TIME,
-    BRAND_NAME, BOT_USERNAME, CHANNEL_USERNAME, COMMUNITY_URL,
+    BRAND_NAME, BOT_USERNAME, CHANNEL_USERNAME, COMMUNITY_URL, DEVELOPER_URL,
+    WELCOME_VIDEO_FILE_ID,
     LINK_EXPIRY_HOURS, API_ID, API_HASH, IST, get_server_url
 )
 import database as db
 from server import start_server, format_file_size, get_media_category
+from fsub import FSubMiddleware, check_channel_membership
 
 dp = Dispatcher()
+dp.message.outer_middleware(FSubMiddleware())
+dp.callback_query.outer_middleware(FSubMiddleware())
+
 HTTP_SESSION: aiohttp.ClientSession | None = None
 
 # ==============================================================================
@@ -338,39 +343,86 @@ async def send_restart_notification(bot: Bot):
             print(f"[restart] Could not notify {chat_id}: {e}")
 
 # ==============================================================================
-# COMMAND HANDLERS
+# UI STRINGS & KEYBOARD BUILDERS
 # ==============================================================================
 
-@dp.message(CommandStart())
-async def cmd_start(message: types.Message):
-    text = (
-        f"<b>Welcome to {BRAND_NAME}!</b> 🚀\n\n"
-        "Convert any video, anime episode, music track, or large document into a "
-        "<b>high-speed web player and direct download link</b> within seconds.\n\n"
-        "<b>Supported Media:</b>\n"
-        "• <b>Videos & Movies:</b> MP4, MKV, WebM, AVI (Up to 2GB/4GB)\n"
-        "• <b>Audio & Music:</b> MP3, FLAC, M4A, WAV, Opus\n"
-        "• <b>Documents:</b> PDF, ZIP, APK, ISO, archives\n\n"
-        "<b>Streaming Features:</b>\n"
-        "• Native HTML5 in-browser video player with instant seek\n"
-        "• Multi-audio and subtitle track support in VLC / MX Player\n"
-        "• Fast chunked streaming without saving files to disk\n\n"
-        "👉 <b>Send or forward any file below to generate your link!</b>"
-    )
+WELCOME_CAPTION = (
+    "<b>Welcome to Kayi File to Link</b>\n\n"
+    "Turn Telegram files into streaming and download links.\n\n"
+    "Send a supported video or file to get started.\n\n"
+    "✦ Watch videos online\n"
+    "✦ Download files easily\n"
+    "✦ Share links instantly\n\n"
+    "<i>Send a file to begin.</i>"
+)
 
-    # Clean buttons for users with direct Mini App access
+def build_welcome_keyboard() -> InlineKeyboardMarkup:
     srv_url = get_server_url()
     first_row = []
     if srv_url.startswith("https://"):
         first_row.append(InlineKeyboardButton(text="Open Mini App 🚀", web_app=types.WebAppInfo(url=srv_url), style="primary"))
-    first_row.append(InlineKeyboardButton(text="My Files 📂", callback_data="user:myfiles"))
+    first_row.append(InlineKeyboardButton(text="📁 My Files", callback_data="user:myfiles", style="success"))
 
-    markup = InlineKeyboardMarkup(inline_keyboard=[
+    return InlineKeyboardMarkup(inline_keyboard=[
         first_row,
-        [InlineKeyboardButton(text="Help & Guide 📖", callback_data="help:tab:about")]
+        [
+            InlineKeyboardButton(text="📖 How to Use", callback_data="help:tab:howto", style="primary"),
+            InlineKeyboardButton(text="❓ Help", callback_data="help:tab:about")
+        ],
+        [
+            InlineKeyboardButton(text="📢 Updates", url=COMMUNITY_URL),
+            InlineKeyboardButton(text="👨‍💻 Developer", url=DEVELOPER_URL)
+        ]
     ])
 
-    await message.reply(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+def build_help_back_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="◀️ Back to Home", callback_data="home")
+        ]
+    ])
+
+async def send_welcome_screen(bot: Bot, chat_id: int):
+    """Sends the cinematic welcome screen using cached Telegram video file_id."""
+    markup = build_welcome_keyboard()
+    if WELCOME_VIDEO_FILE_ID:
+        try:
+            await bot.send_video(
+                chat_id=chat_id,
+                video=WELCOME_VIDEO_FILE_ID,
+                caption=WELCOME_CAPTION,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup,
+                supports_streaming=True
+            )
+            print(f"[welcome] START_CINEMATIC_SUCCESS chat_id={chat_id}")
+            return
+        except Exception as e:
+            print(f"[welcome] START_CINEMATIC_FAILURE chat_id={chat_id} error={type(e).__name__}: {e}")
+    else:
+        print(f"[welcome] START_CINEMATIC_FAILURE chat_id={chat_id} error=NO_FILE_ID_CONFIGURED")
+
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=WELCOME_CAPTION,
+            parse_mode=ParseMode.HTML,
+            reply_markup=markup
+        )
+        print(f"[welcome] START_TEXT_FALLBACK chat_id={chat_id}")
+    except Exception as fb_err:
+        print(f"[welcome] START_TEXT_FALLBACK_FAILURE chat_id={chat_id} error={type(fb_err).__name__}: {fb_err}")
+
+# ==============================================================================
+# COMMAND HANDLERS
+# ==============================================================================
+
+@dp.message(CommandStart())
+async def cmd_start(message: types.Message, bot: Bot | None = None):
+    if bot is None:
+        bot = message.bot
+    user_id = message.from_user.id
+    await send_welcome_screen(bot, user_id)
 
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
@@ -573,6 +625,67 @@ async def cmd_restart(message: types.Message, bot: Bot):
 # ==============================================================================
 # CALLBACK QUERY HANDLERS
 # ==============================================================================
+
+@dp.callback_query(F.data == "fsub:verify")
+async def cb_fsub_verify(callback: types.CallbackQuery, bot: Bot | None = None):
+    if bot is None:
+        bot = callback.bot
+    user_id = callback.from_user.id
+
+    await callback.answer("Checking membership...")
+
+    is_member, status = await check_channel_membership(
+        bot=bot,
+        user_id=user_id,
+        bypass_cache=True
+    )
+
+    if is_member:
+        try:
+            await callback.message.delete()
+        except Exception:
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+        await send_welcome_screen(bot, user_id)
+    else:
+        if status in ("left", "kicked") or (status == "restricted" and not is_member):
+            await callback.answer(
+                "You haven't joined @KayiBots yet. Please join the channel and tap I've Joined.",
+                show_alert=True
+            )
+        else:
+            await callback.answer(
+                "Membership check unavailable right now. Please try again shortly.",
+                show_alert=True
+            )
+
+@dp.callback_query(F.data == "home")
+async def cb_home(callback: types.CallbackQuery, bot: Bot | None = None):
+    if bot is None:
+        bot = callback.bot
+    user_id = callback.from_user.id
+    if callback.message.video:
+        try:
+            await callback.message.edit_caption(
+                caption=WELCOME_CAPTION,
+                parse_mode=ParseMode.HTML,
+                reply_markup=build_welcome_keyboard()
+            )
+            await callback.answer()
+            return
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e).lower():
+                await callback.answer()
+                return
+
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await send_welcome_screen(bot, user_id)
+    await callback.answer()
 
 @dp.callback_query(F.data.startswith("stats:tab:"))
 async def cb_stats_tab(query: types.CallbackQuery, bot: Bot):
@@ -829,10 +942,11 @@ async def main():
     print(f"{BRAND_NAME} Bot active. Serving requests with zero-disk RAM chunk streaming.")
     try:
         retry_delay = 2
+        handle_signals = (sys.platform != "win32")
         while True:
             try:
-                print(f"[{BRAND_NAME}] Polling Telegram updates...")
-                await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types(), handle_signals=False)
+                print(f"[{BRAND_NAME}] Polling Telegram updates (handle_signals={handle_signals})...")
+                await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types(), handle_signals=handle_signals)
                 break
             except (asyncio.CancelledError, KeyboardInterrupt):
                 print(f"[{BRAND_NAME}] Polling stopped safely.")

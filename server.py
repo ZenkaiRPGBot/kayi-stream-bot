@@ -9,9 +9,10 @@ import aiosqlite
 import aiohttp
 from aiohttp import web
 
+import subprocess
 from config import (
     BOT_TOKEN, OWNER_ID, LOG_CHANNEL_ID, API_ID, API_HASH,
-    PORT, PING_URL, BRAND_NAME, CHANNEL_USERNAME, IST, get_server_url
+    PORT, PING_URL, BRAND_NAME, CHANNEL_USERNAME, IST, BOT_START_TIME, get_server_url
 )
 import database as db
 import tracks
@@ -26,6 +27,17 @@ from streamer import FastByteStreamer
 # Pyrogram MTProto Client & FastByteStreamer for unlimited streaming
 pyrogram_client = None
 byte_streamer: FastByteStreamer | None = None
+
+def get_current_git_commit() -> str:
+    """Retrieves current short commit hash for deploy verification."""
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(__file__),
+            text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except Exception:
+        return "unknown"
 
 async def init_pyrogram_client():
     global pyrogram_client, byte_streamer
@@ -198,9 +210,17 @@ async def handle_api_file_info(request: web.Request) -> web.Response:
 
 async def handle_health(request: web.Request) -> web.Response:
     stats = await db.get_global_stats()
+    now = datetime.now(IST)
+    uptime_sec = int((now - BOT_START_TIME).total_seconds())
+    mins, secs = divmod(uptime_sec, 60)
+    hours, mins = divmod(mins, 60)
+    uptime_str = f"{hours}h {mins}m {secs}s" if hours else f"{mins}m {secs}s"
+
     return web.json_response({
         "status": "healthy",
         "service": "kayi-stream-bot",
+        "commit": get_current_git_commit(),
+        "uptime": uptime_str,
         "mtproto_active": pyrogram_client is not None,
         "fast_streamer_active": byte_streamer is not None,
         "timestamp": datetime.now(timezone.utc).isoformat(),

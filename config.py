@@ -17,7 +17,20 @@ API_HASH = os.getenv("API_HASH", "").strip()
 BRAND_NAME = "Kayi File to Link"
 BOT_USERNAME = os.getenv("BOT_USERNAME", "@KayiStreamBot")
 CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@KayiBots")
-COMMUNITY_URL = os.getenv("COMMUNITY_URL", "https://t.me/kayitv")
+COMMUNITY_URL = "https://t.me/KayiBots"
+DEVELOPER_URL = "https://t.me/qouba"
+
+# Cinematic Welcome Configuration
+WELCOME_VIDEO_FILE_ID = os.getenv(
+    "WELCOME_VIDEO_FILE_ID",
+    "BAACAgUAAxkDAAO9awK8jBvrPXT7iBp-PYFg_tDIScIAAhEnAAJE7hBU5s5fTjKr_OU9BA"
+).strip()
+
+# Mandatory Channel Subscription (FSub)
+FSUB_CHANNEL = os.getenv("FSUB_CHANNEL", "@KayiBots").strip()
+FSUB_CHANNEL_URL = os.getenv("FSUB_CHANNEL_URL", COMMUNITY_URL).strip()
+FSUB_CACHE_TTL = int(os.getenv("FSUB_CACHE_TTL", "45"))
+FSUB_TIMEOUT = float(os.getenv("FSUB_TIMEOUT", "5.0"))
 
 def get_server_url() -> str:
     # 1. Custom SERVER_URL if not localhost
