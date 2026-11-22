@@ -15,6 +15,22 @@ logger = logging.getLogger("fsub")
 # UI COPY & KEYBOARD
 # ==============================================================================
 
+# Pending deep-link start parameter tracking across FSub prompts
+_PENDING_PARAMS: dict[int, tuple[str, float]] = {}
+PENDING_PARAM_TTL = 300.0  # 5 minutes
+
+def set_pending_start_param(user_id: int, param: str) -> None:
+    _PENDING_PARAMS[user_id] = (param, time.time() + PENDING_PARAM_TTL)
+
+def get_and_clear_pending_start_param(user_id: int) -> str | None:
+    val = _PENDING_PARAMS.pop(user_id, None)
+    if not val:
+        return None
+    param, expiry = val
+    if time.time() > expiry:
+        return None
+    return param
+
 FSUB_PROMPT_TEXT = (
     "<b>Join Kayi Bots to Continue</b>\n\n"
     "To use Kayi File to Link, please join our official channel.\n\n"
@@ -184,6 +200,12 @@ class FSubMiddleware(BaseMiddleware):
         if isinstance(event, types.Message):
             if event.chat and event.chat.type != "private":
                 return None
+
+            msg_text = getattr(event, "text", None)
+            if msg_text:
+                parts = str(msg_text).strip().split(maxsplit=1)
+                if len(parts) > 1 and parts[0].lower().startswith("/start") and parts[1].strip().lower() == "help":
+                    set_pending_start_param(user.id, "help")
 
             await event.answer(
                 text=FSUB_PROMPT_TEXT,

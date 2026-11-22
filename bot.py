@@ -9,7 +9,7 @@ from datetime import datetime
 import aiohttp
 import psutil
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.enums import ParseMode
 from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton, CopyTextButton,
@@ -26,7 +26,10 @@ from config import (
 )
 import database as db
 from server import start_server, format_file_size, get_media_category
-from fsub import FSubMiddleware, check_channel_membership
+from fsub import (
+    FSubMiddleware, check_channel_membership,
+    set_pending_start_param, get_and_clear_pending_start_param
+)
 
 dp = Dispatcher()
 dp.message.outer_middleware(FSubMiddleware())
@@ -436,10 +439,24 @@ async def send_welcome_screen(bot: Bot, chat_id: int):
 # ==============================================================================
 
 @dp.message(CommandStart())
-async def cmd_start(message: types.Message, bot: Bot | None = None):
+async def cmd_start(message: types.Message, bot: Bot | None = None, command: CommandObject | None = None):
     if bot is None:
         bot = message.bot
     user_id = message.from_user.id
+
+    # Check for /start help deep-link parameter
+    args = ""
+    if command and command.args:
+        args = command.args.strip()
+    elif message.text:
+        parts = message.text.strip().split(maxsplit=1)
+        if len(parts) > 1:
+            args = parts[1].strip()
+
+    if args.lower() == "help":
+        await cmd_help(message)
+        return
+
     await send_welcome_screen(bot, user_id)
 
 @dp.message(Command("help"))
@@ -662,6 +679,23 @@ async def cb_fsub_verify(callback: types.CallbackQuery, bot: Bot | None = None):
     )
 
     if is_member:
+        # Check if user arrived via /start help deep-link
+        pending_param = get_and_clear_pending_start_param(user_id)
+        if pending_param == "help":
+            try:
+                await callback.message.delete()
+            except Exception:
+                try:
+                    await callback.message.edit_reply_markup(reply_markup=None)
+                except Exception:
+                    pass
+            await callback.message.answer(
+                HELP_MAIN_TEXT,
+                parse_mode=ParseMode.HTML,
+                reply_markup=build_help_main_keyboard()
+            )
+            return
+
         try:
             await callback.message.delete()
         except Exception:
