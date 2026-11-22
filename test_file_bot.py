@@ -292,7 +292,38 @@ async def run_file_bot_test_suite():
     assert sec_kb.inline_keyboard[0][0].text == "◀️ Back to Help"
     print("  [PASS] 13. Unified Help Center, section callbacks, and Back to Help navigation verified.")
 
-    print("\n[SUMMARY] ALL 13/13 Kayi File to Link Bot Tests PASSED successfully!\n")
+    # --------------------------------------------------------------------------
+    # 14. Web Player UI & Preferences Tab Regression Verification
+    # --------------------------------------------------------------------------
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    index_file = os.path.join(static_dir, "index.html")
+    css_file = os.path.join(static_dir, "app.css")
+    js_file = os.path.join(static_dir, "app.js")
+
+    with open(index_file, "r", encoding="utf-8") as f:
+        html = f.read()
+    assert 'id="dashContentSettings" style="display: none;"' not in html, "Inline display:none must be absent"
+    assert 'role="tablist"' in html
+    assert 'id="tabDashSettings"' in html
+    assert 'role="tab"' in html
+    assert 'role="tabpanel"' in html
+
+    with open(css_file, "r", encoding="utf-8") as f:
+        css = f.read()
+    assert "--brand-primary: #4F46E5;" in css
+    assert ".dash-nav-tab-btn" in css
+    assert "min-height: 44px;" in css
+    assert "@media (max-width: 360px)" in css
+    assert "env(safe-area-inset-bottom" in css
+
+    with open(js_file, "r", encoding="utf-8") as f:
+        js = f.read()
+    assert "switchDashboardTab" in js
+    assert "aria-selected" in js
+    assert "applySubtitleCustomization" in js
+    print("  [PASS] 14. Web Player UI Preferences visibility and mobile responsiveness regression checks verified.")
+
+    print("\n[SUMMARY] ALL 14/14 Kayi File to Link Bot Tests PASSED successfully!\n")
 
 if __name__ == "__main__":
     asyncio.run(run_file_bot_test_suite())

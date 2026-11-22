@@ -67,15 +67,15 @@
         </div>
 
         <!-- Dashboard Segmented Navigation Tabs -->
-        <div class="dash-nav-segmented">
-          <button class="dash-nav-tab-btn active" id="tabDashFiles">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <div class="dash-nav-segmented" role="tablist" aria-label="Dashboard Views">
+          <button type="button" class="dash-nav-tab-btn active" id="tabDashFiles" role="tab" aria-selected="true" aria-controls="dashContentFiles" tabindex="0">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
             </svg>
             <span>My Files</span>
           </button>
-          <button class="dash-nav-tab-btn" id="tabDashSettings">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button type="button" class="dash-nav-tab-btn" id="tabDashSettings" role="tab" aria-selected="false" aria-controls="dashContentSettings" tabindex="0">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
               <circle cx="12" cy="12" r="3"/>
             </svg>
@@ -84,7 +84,7 @@
         </div>
 
         <!-- DASHBOARD TAB 1: FILES LIBRARY -->
-        <div class="dash-tab-content active" id="dashContentFiles">
+        <div class="dash-tab-content active" id="dashContentFiles" role="tabpanel" aria-labelledby="tabDashFiles">
           <!-- Search Bar -->
           <div class="search-container">
             <div class="search-input-wrap">
@@ -120,7 +120,7 @@
         </div>
 
         <!-- DASHBOARD TAB 2: PREFERENCES & SETTINGS -->
-        <div class="dash-tab-content" id="dashContentSettings" style="display: none;">
+        <div class="dash-tab-content" id="dashContentSettings" role="tabpanel" aria-labelledby="tabDashSettings">
 
           <!-- Card 1: Subtitle Appearance Customization -->
           <div class="pref-card">
@@ -139,27 +139,27 @@
 
             <!-- Setting: Subtitle Size -->
             <div class="pref-group">
-              <label class="pref-label">Font Size</label>
-              <div class="sub-size-segmented-wrap">
-                <button class="sub-size-pill" data-size="small">Small</button>
-                <button class="sub-size-pill active" data-size="normal">Normal</button>
-                <button class="sub-size-pill" data-size="large">Large</button>
+              <label class="pref-label" id="labelSubSize">Font Size</label>
+              <div class="sub-size-segmented-wrap" role="radiogroup" aria-labelledby="labelSubSize">
+                <button type="button" class="sub-size-pill" data-size="small" role="radio" aria-checked="false">Small</button>
+                <button type="button" class="sub-size-pill active" data-size="normal" role="radio" aria-checked="true">Normal</button>
+                <button type="button" class="sub-size-pill" data-size="large" role="radio" aria-checked="false">Large</button>
               </div>
             </div>
 
             <!-- Setting: Subtitle Color -->
             <div class="pref-group">
-              <label class="pref-label">Subtitle Color</label>
-              <div class="sub-color-segmented-wrap">
-                <button class="sub-color-pill active" data-color="#FFFFFF" title="Classic White">
+              <label class="pref-label" id="labelSubColor">Subtitle Color</label>
+              <div class="sub-color-segmented-wrap" role="radiogroup" aria-labelledby="labelSubColor">
+                <button type="button" class="sub-color-pill active" data-color="#FFFFFF" title="Classic White" role="radio" aria-checked="true">
                   <span class="color-dot" style="background:#FFFFFF; border: 1px solid #CBD5E1;"></span>
                   <span>White</span>
                 </button>
-                <button class="sub-color-pill" data-color="#FDE047" title="Cinema Yellow">
+                <button type="button" class="sub-color-pill" data-color="#FDE047" title="Cinema Yellow" role="radio" aria-checked="false">
                   <span class="color-dot" style="background:#FDE047;"></span>
                   <span>Yellow</span>
                 </button>
-                <button class="sub-color-pill" data-color="#67E8F9" title="Cyber Cyan">
+                <button type="button" class="sub-color-pill" data-color="#67E8F9" title="Cyber Cyan" role="radio" aria-checked="false">
                   <span class="color-dot" style="background:#67E8F9;"></span>
                   <span>Cyan</span>
                 </button>
@@ -168,11 +168,11 @@
 
             <!-- Setting: Background Style -->
             <div class="pref-group">
-              <label class="pref-label">Backdrop Style</label>
-              <div class="sub-bg-segmented-wrap">
-                <button class="sub-bg-pill active" data-bg="shadow">Outline Only</button>
-                <button class="sub-bg-pill" data-bg="translucent">Translucent</button>
-                <button class="sub-bg-pill" data-bg="solid">Solid Black</button>
+              <label class="pref-label" id="labelSubBg">Backdrop Style</label>
+              <div class="sub-bg-segmented-wrap" role="radiogroup" aria-labelledby="labelSubBg">
+                <button type="button" class="sub-bg-pill active" data-bg="shadow" role="radio" aria-checked="true">Outline Only</button>
+                <button type="button" class="sub-bg-pill" data-bg="translucent" role="radio" aria-checked="false">Translucent</button>
+                <button type="button" class="sub-bg-pill" data-bg="solid" role="radio" aria-checked="false">Solid Black</button>
               </div>
             </div>
 
@@ -215,11 +215,11 @@
 
             <!-- Setting: Seek Skip Duration -->
             <div class="pref-group">
-              <label class="pref-label">Double Tap & Keyboard Skip Duration</label>
-              <div class="sub-seek-segmented-wrap">
-                <button class="sub-seek-pill" data-seek="5">5s</button>
-                <button class="sub-seek-pill active" data-seek="10">10s</button>
-                <button class="sub-seek-pill" data-seek="15">15s</button>
+              <label class="pref-label" id="labelSeekSkip">Double Tap & Keyboard Skip Duration</label>
+              <div class="sub-seek-segmented-wrap" role="radiogroup" aria-labelledby="labelSeekSkip">
+                <button type="button" class="sub-seek-pill" data-seek="5" role="radio" aria-checked="false">5s</button>
+                <button type="button" class="sub-seek-pill active" data-seek="10" role="radio" aria-checked="true">10s</button>
+                <button type="button" class="sub-seek-pill" data-seek="15" role="radio" aria-checked="false">15s</button>
               </div>
             </div>
 

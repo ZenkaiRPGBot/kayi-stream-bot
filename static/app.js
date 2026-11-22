@@ -1629,22 +1629,79 @@
   // DASHBOARD SEGMENTED TABS (MY FILES vs PREFERENCES)
   // ==============================================================================
 
-  if (tabDashFiles && tabDashSettings) {
-    tabDashFiles.addEventListener('click', () => {
+  function switchDashboardTab(targetTab) {
+    if (!tabDashFiles || !tabDashSettings) return;
+
+    if (targetTab === 'files') {
       tabDashFiles.classList.add('active');
+      tabDashFiles.setAttribute('aria-selected', 'true');
+      tabDashFiles.setAttribute('tabindex', '0');
+
       tabDashSettings.classList.remove('active');
-      if (dashContentFiles) dashContentFiles.classList.add('active');
-      if (dashContentSettings) dashContentSettings.classList.remove('active');
-      triggerHaptic('select');
+      tabDashSettings.setAttribute('aria-selected', 'false');
+      tabDashSettings.setAttribute('tabindex', '-1');
+
+      if (dashContentFiles) {
+        dashContentFiles.classList.add('active');
+        dashContentFiles.style.display = 'block';
+      }
+      if (dashContentSettings) {
+        dashContentSettings.classList.remove('active');
+        dashContentSettings.style.display = 'none';
+      }
+    } else if (targetTab === 'settings') {
+      tabDashSettings.classList.add('active');
+      tabDashSettings.setAttribute('aria-selected', 'true');
+      tabDashSettings.setAttribute('tabindex', '0');
+
+      tabDashFiles.classList.remove('active');
+      tabDashFiles.setAttribute('aria-selected', 'false');
+      tabDashFiles.setAttribute('tabindex', '-1');
+
+      if (dashContentSettings) {
+        dashContentSettings.classList.add('active');
+        dashContentSettings.style.display = 'block';
+      }
+      if (dashContentFiles) {
+        dashContentFiles.classList.remove('active');
+        dashContentFiles.style.display = 'none';
+      }
+    }
+    triggerHaptic('select');
+  }
+
+  if (tabDashFiles && tabDashSettings) {
+    tabDashFiles.addEventListener('click', () => switchDashboardTab('files'));
+    tabDashSettings.addEventListener('click', () => switchDashboardTab('settings'));
+
+    // Keyboard accessibility for tab list
+    [tabDashFiles, tabDashSettings].forEach((tabBtn) => {
+      tabBtn.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (tabBtn === tabDashFiles) {
+            tabDashSettings.focus();
+            switchDashboardTab('settings');
+          } else {
+            tabDashFiles.focus();
+            switchDashboardTab('files');
+          }
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (tabBtn === tabDashSettings) {
+            tabDashFiles.focus();
+            switchDashboardTab('files');
+          } else {
+            tabDashSettings.focus();
+            switchDashboardTab('settings');
+          }
+        }
+      });
     });
 
-    tabDashSettings.addEventListener('click', () => {
-      tabDashSettings.classList.add('active');
-      tabDashFiles.classList.remove('active');
-      if (dashContentSettings) dashContentSettings.classList.add('active');
-      if (dashContentFiles) dashContentFiles.classList.remove('active');
-      triggerHaptic('select');
-    });
+    // Ensure initial display states match on load
+    if (dashContentFiles) dashContentFiles.style.display = 'block';
+    if (dashContentSettings) dashContentSettings.style.display = 'none';
   }
 
   // ==============================================================================
@@ -1741,11 +1798,22 @@
     }
   }
 
+  // Helper to sync pill group active & aria-checked state
+  function setPillActive(groupSelector, activePill) {
+    document.querySelectorAll(groupSelector).forEach((p) => {
+      p.classList.remove('active');
+      p.setAttribute('aria-checked', 'false');
+    });
+    if (activePill) {
+      activePill.classList.add('active');
+      activePill.setAttribute('aria-checked', 'true');
+    }
+  }
+
   // Subtitle size pills
   document.querySelectorAll('.sub-size-pill').forEach((pill) => {
     pill.addEventListener('click', () => {
-      document.querySelectorAll('.sub-size-pill').forEach((p) => p.classList.remove('active'));
-      pill.classList.add('active');
+      setPillActive('.sub-size-pill', pill);
       applySubtitleCustomization(pill.dataset.size, null, null);
       triggerHaptic('light');
     });
@@ -1754,8 +1822,7 @@
   // Subtitle color pills
   document.querySelectorAll('.sub-color-pill').forEach((pill) => {
     pill.addEventListener('click', () => {
-      document.querySelectorAll('.sub-color-pill').forEach((p) => p.classList.remove('active'));
-      pill.classList.add('active');
+      setPillActive('.sub-color-pill', pill);
       applySubtitleCustomization(null, pill.dataset.color, null);
       triggerHaptic('light');
     });
@@ -1764,8 +1831,7 @@
   // Subtitle backdrop pills
   document.querySelectorAll('.sub-bg-pill').forEach((pill) => {
     pill.addEventListener('click', () => {
-      document.querySelectorAll('.sub-bg-pill').forEach((p) => p.classList.remove('active'));
-      pill.classList.add('active');
+      setPillActive('.sub-bg-pill', pill);
       applySubtitleCustomization(null, null, pill.dataset.bg);
       triggerHaptic('light');
     });
@@ -1785,8 +1851,7 @@
   // Seek skip duration pills
   document.querySelectorAll('.sub-seek-pill').forEach((pill) => {
     pill.addEventListener('click', () => {
-      document.querySelectorAll('.sub-seek-pill').forEach((p) => p.classList.remove('active'));
-      pill.classList.add('active');
+      setPillActive('.sub-seek-pill', pill);
       activeSeekDuration = parseInt(pill.dataset.seek || '10', 10);
       localStorage.setItem('kayi_seek_duration', activeSeekDuration);
       triggerHaptic('light');
@@ -1797,28 +1862,16 @@
   // Sync preference UI buttons with saved state on startup
   function initPreferencePills() {
     const sizePill = document.querySelector(`.sub-size-pill[data-size="${activeSubSize}"]`);
-    if (sizePill) {
-      document.querySelectorAll('.sub-size-pill').forEach((p) => p.classList.remove('active'));
-      sizePill.classList.add('active');
-    }
+    if (sizePill) setPillActive('.sub-size-pill', sizePill);
 
     const colorPill = document.querySelector(`.sub-color-pill[data-color="${activeSubColor}"]`);
-    if (colorPill) {
-      document.querySelectorAll('.sub-color-pill').forEach((p) => p.classList.remove('active'));
-      colorPill.classList.add('active');
-    }
+    if (colorPill) setPillActive('.sub-color-pill', colorPill);
 
     const bgPill = document.querySelector(`.sub-bg-pill[data-bg="${activeSubBg}"]`);
-    if (bgPill) {
-      document.querySelectorAll('.sub-bg-pill').forEach((p) => p.classList.remove('active'));
-      bgPill.classList.add('active');
-    }
+    if (bgPill) setPillActive('.sub-bg-pill', bgPill);
 
     const seekPill = document.querySelector(`.sub-seek-pill[data-seek="${activeSeekDuration}"]`);
-    if (seekPill) {
-      document.querySelectorAll('.sub-seek-pill').forEach((p) => p.classList.remove('active'));
-      seekPill.classList.add('active');
-    }
+    if (seekPill) setPillActive('.sub-seek-pill', seekPill);
 
     applySubtitleCustomization(activeSubSize, activeSubColor, activeSubBg);
   }

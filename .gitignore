@@ -7,3 +7,4 @@ cloudflared.exe
 tunnel_url.txt
 media_cache/
 *.log
+test_screenshots/
