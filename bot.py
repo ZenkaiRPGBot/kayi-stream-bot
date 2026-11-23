@@ -197,100 +197,73 @@ async def build_stats_view(bot: Bot, tab: str = "overview") -> tuple[str, Inline
 # ==============================================================================
 
 HELP_MAIN_TEXT = (
-    f"<b>{BRAND_NAME} — Help Center</b> 📖\n\n"
-    "Welcome to the Kayi File to Link Help Center. Choose a topic below to learn how to stream videos online, download files, use the web player and Mini App, and manage your links.\n\n"
-    "• <b>Getting Started:</b> Sending files and generating links\n"
-    "• <b>Streaming & Downloading:</b> Watch links, direct downloads, and external players\n"
-    "• <b>Video Player & Mini App:</b> Browser playback, player controls, and Mini App\n"
-    "• <b>Managing Your Files:</b> Viewing active files and link information\n"
-    "• <b>Troubleshooting:</b> Common playback issues and solutions\n\n"
-    "<i>Select a section below for details:</i>"
+    "<b>Kayi File to Link — Help Center</b>\n\n"
+    "Turn Telegram files into streaming and download links.\n\n"
+    "Choose a topic below to learn more."
 )
 
 HELP_SECTIONS = {
     "start": (
-        f"<b>Getting Started — {BRAND_NAME}</b> 🚀\n\n"
-        "Convert any Telegram file or video into high-speed streaming and direct download links.\n\n"
-        "<b>How to Use:</b>\n"
-        "1. Send or forward any video, audio, or document file into this chat.\n"
-        "2. The bot registers the file and assigns a sequential reference ID (e.g. <code>20261122001</code>).\n"
-        "3. You instantly receive an action card with <b>Watch Online</b> and <b>Download</b> buttons.\n"
-        "4. Share the link with anyone — viewers can watch or download directly in their browser without a Telegram account."
-    ),
-    "streaming": (
-        "<b>Streaming & Downloading</b> 🎬\n\n"
-        "<b>Watch Online:</b>\n"
-        "Tap <b>Watch Online</b> to open the file in the responsive in-browser HTML5 video player.\n\n"
-        "<b>Direct Download:</b>\n"
-        "Tap <b>Fast Download</b> for high-speed single-connection downloads with pause and resume support.\n\n"
-        "<b>External Media Players:</b>\n"
-        "Stream links support HTTP 206 range requests and can be opened directly in:\n"
-        "• <b>Android:</b> VLC for Android, MX Player (Network Stream)\n"
-        "• <b>iOS:</b> Safari native player, VLC, Outplayer\n"
-        "• <b>PC / Mac:</b> VLC Media Player (Ctrl+N), PotPlayer, MPV"
+        "<b>Getting Started</b>\n\n"
+        "Create a streaming or download link in a few steps.\n\n"
+        "✦ Send a supported video or file to the bot.\n\n"
+        "✦ Wait while your links are generated.\n\n"
+        "✦ Open the streaming link to watch supported videos online.\n\n"
+        "✦ Use the download link to save the original file.\n\n"
+        "You can access your previously submitted files through <b>My Files</b>."
     ),
     "player": (
-        "<b>Video Player & Mini App</b> 📱\n\n"
-        "<b>HTML5 Web Player:</b>\n"
-        "• Modern video controls including play/pause, seek bar, volume, playback speed, and fullscreen.\n"
-        "• Subtitle rendering engine and multi-audio track selection when tracks are embedded in the video container.\n\n"
-        "<b>Telegram Mini App:</b>\n"
-        "• On secure HTTPS connections, tap <b>Open Mini App 🚀</b> on the home screen to launch your personal media hub directly inside Telegram without leaving your chat.\n"
-        "• Browse active files, launch stream links, and manage settings in-app."
+        "<b>Video Player</b>\n\n"
+        "Watch supported videos directly in your browser.\n\n"
+        "<b>Playback Controls</b>\n\n"
+        "✦ <b>Play / Pause</b> — Start or pause the video.\n\n"
+        "✦ <b>Seek</b> — Move forward or backward through the video.\n\n"
+        "✦ <b>Playback Speed</b> — Adjust the playback speed when available.\n\n"
+        "<b>Additional Options</b>\n\n"
+        "Depending on the video and supported player features, you may also be able to select audio tracks or subtitles.\n\n"
+        "<b>Tip:</b> For a better viewing experience, use an updated browser and a stable internet connection."
     ),
-    "manage": (
-        "<b>Managing Your Files</b> 📂\n\n"
-        "<b>Viewing Active Files:</b>\n"
-        "• Send <code>/myfiles</code> or tap <b>📁 My Files</b> on the home screen.\n"
-        "• View your recent uploads with direct links, file sizes, and category badges (video, audio, document).\n\n"
-        "<b>File Information:</b>\n"
-        "• Send <code>/info &lt;ID&gt;</code> (e.g. <code>/info 20261122001</code>) to inspect technical metadata, MIME type, and exact file size.\n\n"
-        "<b>Link Persistence:</b>\n"
-        "• Stream links stream directly from Telegram servers via MTProto chunks. As long as the file is intact in Telegram, your stream links remain functional."
+    "downloads": (
+        "<b>Downloads & Sharing</b>\n\n"
+        "Use the generated links to access your files.\n\n"
+        "✦ <b>Watch Link</b> — Open supported videos in the web player.\n\n"
+        "✦ <b>Download Link</b> — Download the original file.\n\n"
+        "✦ <b>Share Link</b> — Copy and send a link to someone else.\n\n"
+        "<b>Important:</b> Anyone with access to a working public link may be able to open the file.\n\n"
+        "Use <b>My Files</b> to access your previously submitted files."
     ),
-    "troubleshoot": (
-        "<b>Troubleshooting & Common Issues</b> 🛠️\n\n"
-        "<b>Video Buffering or Loading Slowly:</b>\n"
-        "• Check your internet connection speed.\n"
-        "• For large files (1GB+), streaming in an external player like <b>VLC</b> or <b>MPV</b> provides smoother hardware-accelerated decoding.\n\n"
-        "<b>No Audio in Browser:</b>\n"
-        "• Some web browsers do not natively support AC3, EAC3, or DTS audio codecs.\n"
-        "• Open the stream URL in VLC or MX Player, which contain built-in decoders for all audio formats.\n\n"
-        "<b>Subtitles Not Showing:</b>\n"
-        "• The web player extracts embedded ASS/SRT subtitles where present. If subtitles do not appear, ensure they were muxed into the video file or open in VLC."
+    "issues": (
+        "<b>Common Issues</b>\n\n"
+        "<b>Video not playing?</b>\n\n"
+        "✦ Check your internet connection.\n\n"
+        "✦ Try opening the link in an updated browser.\n\n"
+        "✦ Some video formats may not support direct browser playback.\n\n"
+        "<b>Download not working?</b>\n\n"
+        "✦ Refresh the page and try again.\n\n"
+        "✦ Check whether the link is still available.\n\n"
+        "<b>Still need help?</b>\n\n"
+        "Contact @qouba and briefly describe the issue."
     )
 }
 
 def build_help_main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🚀 Getting Started", callback_data="help:sec:start"),
-            InlineKeyboardButton(text="🎬 Streaming & Downloads", callback_data="help:sec:streaming")
-        ],
-        [
-            InlineKeyboardButton(text="📱 Player & Mini App", callback_data="help:sec:player"),
-            InlineKeyboardButton(text="📂 Managing Files", callback_data="help:sec:manage")
-        ],
-        [
-            InlineKeyboardButton(text="🛠️ Troubleshooting", callback_data="help:sec:troubleshoot")
-        ],
-        [
-            InlineKeyboardButton(text="◀️ Back to Home", callback_data="home")
-        ]
+        [InlineKeyboardButton(text="Getting Started", callback_data="help:sec:start")],
+        [InlineKeyboardButton(text="Video Player", callback_data="help:sec:player")],
+        [InlineKeyboardButton(text="Downloads & Sharing", callback_data="help:sec:downloads")],
+        [InlineKeyboardButton(text="Common Issues", callback_data="help:sec:issues")]
     ])
 
 def build_help_subpage_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="◀️ Back to Help", callback_data="help:main")
-        ]
+        [InlineKeyboardButton(text="← Back to Help", callback_data="help:main")]
     ])
 
 def build_help_view(tab: str = "about") -> tuple[str, InlineKeyboardMarkup]:
     tab_map = {
         "howto": "start",
-        "commands": "manage",
-        "players": "streaming",
+        "commands": "downloads",
+        "players": "player",
         "about": "start"
     }
     sec_key = tab_map.get(tab)
@@ -790,7 +763,13 @@ async def cb_help_main(query: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("help:sec:"))
 async def cb_help_section(query: types.CallbackQuery):
     sec_key = query.data.split(":")[2]
-    text = HELP_SECTIONS.get(sec_key)
+    legacy_map = {
+        "streaming": "downloads",
+        "troubleshoot": "issues",
+        "manage": "start"
+    }
+    resolved_key = legacy_map.get(sec_key, sec_key)
+    text = HELP_SECTIONS.get(resolved_key)
     if not text:
         await query.answer("Section not found.", show_alert=True)
         return

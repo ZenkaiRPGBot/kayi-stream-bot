@@ -260,7 +260,7 @@ async def run_file_bot_test_suite():
     print("  [PASS] 12. Streaming endpoints remain unhindered and health endpoint returns git commit.")
 
     # --------------------------------------------------------------------------
-    # 13. Help Center Navigation & Section Handlers
+    # 13. Compact 4-Topic Help Center Navigation & Section Handlers
     # --------------------------------------------------------------------------
     mock_msg_help = MagicMock()
     mock_msg_help.from_user.id = USER_ID
@@ -271,11 +271,9 @@ async def run_file_bot_test_suite():
     reply_kb = mock_msg_help.reply.call_args[1].get("reply_markup") or mock_msg_help.reply.call_args[0][2]
     cb_datas = [btn.callback_data for row in reply_kb.inline_keyboard for btn in row if btn.callback_data]
     assert "help:sec:start" in cb_datas
-    assert "help:sec:streaming" in cb_datas
     assert "help:sec:player" in cb_datas
-    assert "help:sec:manage" in cb_datas
-    assert "help:sec:troubleshoot" in cb_datas
-    assert "home" in cb_datas
+    assert "help:sec:downloads" in cb_datas
+    assert "help:sec:issues" in cb_datas
 
     # Test section navigation
     mock_cb_sec = MagicMock()
@@ -286,11 +284,11 @@ async def run_file_bot_test_suite():
     mock_cb_sec.answer = AsyncMock()
     await bot_module.cb_help_section(mock_cb_sec)
     assert mock_cb_sec.message.edit_text.called
-    assert "Video Player & Mini App" in str(mock_cb_sec.message.edit_text.call_args)
+    assert "Video Player" in str(mock_cb_sec.message.edit_text.call_args)
     sec_kb = mock_cb_sec.message.edit_text.call_args[1].get("reply_markup")
     assert sec_kb.inline_keyboard[0][0].callback_data == "help:main"
-    assert sec_kb.inline_keyboard[0][0].text == "◀️ Back to Help"
-    print("  [PASS] 13. Unified Help Center, section callbacks, and Back to Help navigation verified.")
+    assert sec_kb.inline_keyboard[0][0].text == "← Back to Help"
+    print("  [PASS] 13. Compact 4-topic Help Center, section callbacks, and Back to Help navigation verified.")
 
     # --------------------------------------------------------------------------
     # 14. Web Player UI & Preferences Tab Regression Verification
