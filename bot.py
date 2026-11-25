@@ -308,24 +308,30 @@ async def setup_bot_commands(bot: Bot):
         except Exception as e:
             print(f"[menu] Could not configure chat menu button: {e}")
 
-async def send_restart_notification(bot: Bot):
+def _consume_restart_reason() -> str:
+    reason_file = os.path.join(os.path.dirname(__file__), "restart_reason.txt")
+    if not os.path.exists(reason_file):
+        return ""
     try:
-        commit_res = subprocess.run(
-            ["git", "log", "-1", "--pretty=format:%s"],
-            capture_output=True, text=True, timeout=3
-        )
-        last_commit = commit_res.stdout.strip() if commit_res.returncode == 0 else "System initialization update"
+        with open(reason_file, "r", encoding="utf-8") as f:
+            content = " ".join(line.strip("-•* ").strip() for line in f.read().splitlines() if line.strip())
+        os.remove(reason_file)
+        return content
     except Exception:
-        last_commit = "System initialization update"
+        return ""
 
-    now_ist_str = datetime.now(IST).strftime("%d %b %Y, %I:%M:%S %p IST")
-    msg_text = (
-        f"<b>{BRAND_NAME} Restarted 🚀</b>\n\n"
-        f"• <b>Status:</b> <code>Online & Streaming</code> 🟢\n"
-        f"• <b>Commit:</b> <code>{html.escape(last_commit)}</code>\n"
-        f"• <b>Time:</b> <code>{now_ist_str}</code>\n\n"
-        f"⚡ <i>Zero-disk MTProto chunk streaming ready.</i>"
-    )
+async def send_restart_notification(bot: Bot):
+    reason = _consume_restart_reason()
+    now_ist_str = datetime.now(IST).strftime("%I:%M %p IST · %b %d")
+    lines = [
+        f"<b>{BRAND_NAME} Online 🟢</b>",
+        "",
+        "<b>Status:</b> Running smoothly",
+    ]
+    if reason:
+        lines.append(f"<b>Note:</b> {html.escape(reason)}")
+    lines.append(f"<b>Time:</b> <code>{now_ist_str}</code>")
+    msg_text = "\n".join(lines)
 
     targets = []
     if LOG_CHANNEL_ID:
